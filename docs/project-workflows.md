@@ -1,104 +1,99 @@
 # Project role workflows
 
-Selecting a repository in SLP prepares `.slp` before any agents are created. A missing folder, or a legacy folder containing only generated logs/specs, receives these editable defaults:
+Selecting a repository in SLP Orchestrator (SLP or Skills tab) prepares `.slp/` before any agent is created. When `.slp/` contains no role file yet, the plugin writes these editable defaults (`server/project-prompts/defaults.ts`):
 
 ```text
 .slp/
-├── SUPERVISOR.md
-├── LEAD.md
-├── QA_LEAD.md
-├── FORKED_LEAD.md
-├── BASE_PEER.md
+├── SUPERVISOR.md              # role: supervisor
+├── LEAD.md                    # role: master-lead (or lead)
+├── QA_LEAD.md                 # role: qa-lead
 └── peers/
-    ├── DEVELOPER.md
-    ├── REVIEWER.md
-    ├── QA_ENGINEER.md
-    └── SECURITY_REVIEWER.md
+    ├── ARCHITECT.md           # kind: advisor    tier: feature
+    ├── DEVELOPER.md           # kind: developer  tier: feature
+    ├── QA_ENGINEER.md         # kind: qa         tier: integration
+    ├── REVIEWER.md            # kind: advisor    tier: feature
+    └── SECURITY_REVIEWER.md   # kind: advisor    tier: feature
 ```
 
-Existing custom prompt files are preserved. Role discovery only reads the four root role files (`SUPERVISOR.md`, `LEAD.md`, `FORKED_LEAD.md`, `BASE_PEER.md`) and Markdown files inside `.slp/peers/`. Other files or subdirectories under `.slp/` (such as `.slp/architecture/` or legacy `MASTER_SPEC.md` and `ACCEPTANCE_DOC.md`) are ignored during role discovery. Role IDs come from YAML front matter, independently of filenames.
+Existing files are never overwritten. When `.slp/` already has roles, only a missing `QA_LEAD.md` is added. Role discovery reads the three root files and every `.md` file under `.slp/peers/` (recursively). Other files and folders such as `.slp/standards/` are ignored by the parser, but agents read them from disk. Role IDs come from the YAML `role` field, independently of filenames.
+
+Starting a run does not install the `slp-manager` skill, create `.slp/standards/TEST_POLICY.md` or generate stack-specific roles. Use **Skills → Init skill slp-manager** and a regular coding agent for that.
 
 ## File format
-
-The SLP form and **Settings → SLP Orchestrator** share host-wide defaults managed by Paseo. New installations start in `FULL_AUTO`; changes to mode, role models, thinking and permissions save automatically. Once the catalog loads, visible defaults are saved as concrete model/thinking/permission IDs for Supervisor, Lead and Peers. Empty permission choices resolve to Full Access where the provider supports it. Session title, repository and base branch remain specific to each new run.
 
 ```markdown
 ---
 role: qa-engineer
 name: QA Engineer
-description: Review invoice calculations and regression coverage.
+description: Grades the merged build against the locked brief criteria and product spec scenarios.
 model:
 thinking:
-features:
-  - invoice rounding
-  - billing regressions
+kind: qa
+tier: integration
 ---
 
 # Workflow
 
-1. Read the stage goal and brief through the SLP tools.
-2. Inspect decimal precision, currency conversion and refund edge cases.
-3. Run relevant tests; add regression tests if needed in the stage worktree.
-4. Return concrete evidence through slp_stage_report.
+Grade the delivered behavior against the criteria you were given. You do not fix code.
+...
 ```
 
-`role` and `description` are required. Role names are normalized to lowercase IDs, with spaces or underscores converted to hyphens: `Invoice Specialist` becomes `invoice-specialist`. Duplicate IDs and malformed YAML stop initialization with the affected path.
+- `role` and `description` are required, and the `# Workflow` body must not be empty. Role names are normalized to lowercase IDs with spaces and underscores turned into hyphens (`Invoice Specialist` becomes `invoice-specialist`) and must match `^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`.
+- Duplicate peer IDs, the reserved IDs `supervisor`, `lead`, `master-lead`, `qa-lead`, a root file with the wrong `role`, and malformed YAML stop loading with the affected path. Quote YAML values that contain `: `.
+- `kind` is `advisor`, `developer` or `qa`; any other value is rejected. When omitted, the engine infers it from the role ID (review/audit/architect/design/research/consult/analyst → advisor, qa/test/verif/playtest → qa, otherwise developer).
+- `tier` (`feature` or `integration`) is a prompt-level convention. The engine does not validate it or enforce where a peer is scheduled.
+- `model` and `thinking` are optional and inherit the Supervisor, Lead or Peer defaults from SLP settings when empty. A `provider/model-id` switches provider; a short model ID keeps it. A provider/permission mismatch is reported when the run starts, not by **Reload role workflows**.
+- Custom keys (`domains`, `owned_paths`, ...) are kept and shown to the Lead.
 
-`model` and `thinking` are optional, independently inherited from the corresponding Supervisor, Lead or Peer selections in the SLP form. Omitted, empty or null fields inherit. Root role files (`SUPERVISOR.md`, `LEAD.md`, `FORKED_LEAD.md`, `BASE_PEER.md`) can select a full `provider/model-id` or a short model ID. Before a pipeline runs its declared stages, it runs the `peer_understand` phase in the pipeline worktree using a `base_peer` (`.slp/BASE_PEER.md`) alongside the pipeline's `forked_lead`. Once `forked_lead` approves `peer_understand`, every subsequent stage peer in that pipeline is forked from `base_peer`'s session so it retains the full task investigation context without re-investigating from scratch. Because stage peers fork from `base_peer`, model definitions in `.slp/peers/*.md` depend on `base_peer`'s provider and automatically fall back to the global SLP config (`run.providers.peer`) if a peer file specifies a model that does not match or exist under `base_peer`'s provider.
+The front matter of every peer is injected into the system prompt of both feature Leads and the QA Lead, so keep the catalog small. The `# Workflow` body is used verbatim as the system prompt of the agent that carries that role; the engine adds no rules around it. Stage mail adds a short kind-specific instruction, so each peer workflow should still carry its own protocol section: talk only to the Lead, use only `slp-bus` tools, never `git push`, end the turn after `slp_stage_report` or `slp_escalate`.
 
-Run modes apply to the dynamic pipeline generically: `FULL_AUTO` leaves human gates closed, `STEP_BY_STEP_DEBUG` opens a gate after each approved stage, and `SEMI_AUTO` opens one before integration. Forked Lead approval is still required for each stage in every mode.
+## Pipeline definition
 
-There is no required `kind`. Each file under `.slp/peers/*.md` is the agent prompt for that peer role: its YAML front matter summary (`role`, `name`, `description`, and any domain metadata) is injected into the Lead's `systemPrompt` so the Lead coordinates stages on its own, while its Markdown body (`# Workflow`) is injected into the peer agent spawned for that role.
+A feature Lead calls `slp_define_pipeline`. The engine enforces the shape before spawning any agent (`server/pipeline/stage-shape.ts`):
 
-## Lead pipeline definition
-
-The Lead receives the summary metadata of all `.slp/peers` roles directly in its `systemPrompt` and creates a complete pipeline with `slp_define_pipeline`. The pipeline is a JSON object; the engine does not impose fixed stages or legacy roles:
+- Feature pipeline: `[planning]? -> implement`. Planning is optional, must be first and holds only advisors. Implement is last and holds exactly one developer. No verify stage.
+- QA pipeline (QA Lead only): no planning stage. Each verify stage holds at least one QA peer, no advisors and at most one developer who fixes.
+- A feature pipeline without planning must pass `brief` at definition. With planning, the brief is supplied when the Lead approves the planning stage.
 
 ```json
 {
   "pipeline": {
-    "name": "task_A",
-    "version": "1.0",
-    "worktree": "path/to/worktree",
-    "description": "Implementation of task A.",
+    "name": "auth-token-rotation",
+    "description": "Rotate refresh tokens.",
     "stages": [
       {
-        "name": "review-codebase",
-        "goal": "Understand the existing design before coding.",
-        "peers": [
-          {"role": "reviewer", "task": "Review structure and risks."},
-          {"role": "developer", "task": "Address the review findings."}
-        ]
+        "name": "planning",
+        "kind": "planning",
+        "goal": "Choose the rotation approach and lock the brief.",
+        "peers": [{ "role": "architect", "task": "Propose the simplest rotation design." }]
       },
       {
-        "name": "coding",
-        "goal": "Implement the accepted design.",
-        "peers": [{"role": "developer", "task": "Implement the feature."}]
-      },
-      {
-        "name": "qa",
-        "goal": "Check the completed feature.",
-        "peers": [{"role": "qa_engineer", "task": "Run quality checks."}]
+        "name": "implement",
+        "kind": "implement",
+        "goal": "Build exactly the locked brief.",
+        "peers": [{ "role": "developer", "task": "Update the auth service and add unit tests." }]
       }
     ]
   }
 }
 ```
 
-Each `role` must match a Markdown role ID. The daemon loads the matching workflow into the peer system prompt; the Lead does not send a copied workflow string. `goal` is shared context for every peer in that stage, while `task` is the individual assignment. A stage may contain any number of peers. They work concurrently in the handed-off worktree, consult each other with the blocking `slp_ask` (answers come back through `slp_answer`) or send one-way `slp_notify` updates, and submit reports with `slp_stage_report`. The Forked Lead independently decides whether the stage goal is met and calls `slp_approve_stage`; peer unanimity is not required. It calls `slp_stage_rework` when another pass is needed.
+`version` defaults to `"1.0"`. `worktree` defaults to the worktree provisioned for the Lead; QA pipelines always omit it and run on the QA worktree. `stages[].kind` is inferred from the peers' kinds when omitted, and a kind that contradicts them is rejected. Each `role` must match a peer ID from `.slp/peers`.
 
-After approval, the stage peers are archived. The next stage receives the accepted result and gets a fresh peer set; its coordinator can query prior stage reports and messages when needed, rather than receiving the entire history automatically. Stage messages and reports are stored in SQLite with their stage, so the Lead can audit the discussion without creating files in the repository. The Lead can finish the whole pipeline with `slp_finalize_pipeline`; a paused pipeline resumes through `slp_resume_pipeline`.
+The brief has the shape `{ approach, criteria: [{ id, requirement, verification }], inScope, outOfScope }`. The Lead is woken when every peer of the stage has reported, or immediately when one reports `blocked`. It approves with `slp_approve_stage` or requests another pass with `slp_stage_rework`, up to the run's rework cap per stage (default 3). Advisors are archived when planning closes. QA peers must submit a `scorecard` in `slp_stage_report`; after a developer fix in a verify stage, the graders re-score automatically.
 
-`slp_create_worktree` creates the workspace named by the Lead before `slp_define_pipeline`. The pipeline's `worktree` and branch are persisted for monitoring. The operator can inspect the live stage names, peer roles, reports and direct messages in the run detail view.
+When the implement stage is approved, the Lead calls `slp_finalize_pipeline`: the engine merges the feature branch into the QA branch with `git merge --no-ff`, archives the peers and deletes the temporary `slp/*` worktree and branch. After the last feature merges, the QA Lead defines its verify pipeline, closes it with `slp_finalize_pipeline` (no merge) and reports with `slp_report`.
 
 ## Editing and persistence
 
-Edit Markdown, then use **Reload role workflows** in SLP to validate discovery. Starting a run reads the latest files again and saves a complete prompt snapshot in SQLite. That run's agents and forks use the snapshot even if files are subsequently edited; new runs adopt later edits. Existing agent sessions keep their creation-time configuration.
+Edit the Markdown, then use **Skills → Reload role workflows** to validate discovery. Starting a run reads the files again and stores a snapshot of the three root files and `peers/**` in SQLite. The run's agents use that snapshot even if the files change later; new runs pick up later edits.
 
-`.slp` contains intentional project configuration only. The runtime creates no pipeline, task specification, report or log files there or in worktrees; pipeline definitions, stage reports, direct messages and audit logs remain in SQLite outside the repository. The shell can initialize or validate configuration without creating any agent:
+Lead and peer worktrees branch from the committed base branch, so commit `.slp/` (including `.slp/standards/`) on the checked-out branch before starting a run. Uncommitted files exist only in the main checkout.
+
+`.slp/` holds intentional project configuration only. The runtime writes no pipeline, specification, report or log files into the repository; they stay in SQLite. The shell can initialize or validate configuration without creating any agent:
 
 ```bash
 tools/bin/slp-rpc slp.project.prompts.init '{"repoPath":"/absolute/path/to/project"}'
 ```
 
-Runs created by the retired task engine remain available for inspection, but their task controls are read-only and they are not resumed automatically. Start a new run after upgrading to use Lead-defined stages and the current mode gates.
+Runs created by the retired task engine remain visible as read-only history and are not resumed automatically.

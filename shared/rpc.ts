@@ -4,6 +4,8 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import { RunModeSchema } from "./roles";
 import { BoardTicketSchema } from "./board";
+import { ProjectValidationResultSchema } from "./project-validation";
+import { StackDetectionResultSchema, DryRunJobStatusSchema } from "./project-setup";
 import { CommLogEntrySchema, RunSchema, RunStatusSchema } from "./state";
 import { ProjectRoleSchema } from "./project-prompts";
 import { PeerQuestionMetricsSchema, PeerQuestionStatusSchema, PeerQuestionViewSchema } from "./peer-questions";
@@ -23,6 +25,41 @@ export const initSlpManagerSkillRpc = defineRpc({
     skillName: z.string(),
     installedPaths: z.array(z.string()),
   }),
+});
+
+// Validates a project's .slp configuration against the real repository (stacks, tiers, test commands,
+// coverage, worktree bootstrap, committed state). Errors block Start Run; warnings are advisory.
+export const validateProjectRpc = defineRpc({
+  name: "slp.project.validate",
+  input: z.object({ repoPath: z.string().trim().min(1) }),
+  output: ProjectValidationResultSchema,
+});
+
+// Generates .slp roles, TEST_POLICY, paseo.json, .worktreeinclude and .gitignore lines from detected
+// packages. Returns the files it would write (dryRun) or the paths it wrote (dryRun=false).
+export const scaffoldProjectRpc = defineRpc({
+  name: "slp.project.scaffold",
+  input: z.object({ repoPath: z.string().trim().min(1), dryRun: z.boolean().default(true), overwrite: z.boolean().default(false) }),
+  output: z.object({
+    detection: StackDetectionResultSchema,
+    files: z.array(z.object({ path: z.string(), action: z.enum(["create", "skip", "overwrite", "append", "remove"]), bytes: z.number().int() })),
+    notes: z.array(z.string()),
+  }),
+});
+
+// Starts a background Dry Run (worktree setup + fast commands) and returns immediately, because a full
+// run can exceed the daemon's synchronous RPC budget. Poll dryRunStatusRpc for the result.
+export const dryRunProjectRpc = defineRpc({
+  name: "slp.project.dry_run",
+  input: z.object({ repoPath: z.string().trim().min(1) }),
+  output: DryRunJobStatusSchema,
+});
+
+// Polls the latest Dry Run job status for a repo: running, done (with the result), error, or none.
+export const dryRunStatusRpc = defineRpc({
+  name: "slp.project.dry_run_status",
+  input: z.object({ repoPath: z.string().trim().min(1) }),
+  output: DryRunJobStatusSchema,
 });
 
 // Compact row for the run picker; the full Run is only fetched for the selected run.
@@ -80,6 +117,8 @@ export const startRunRpc = defineRpc({
     supervisorPermissionModeId: z.string().optional(),
     leadPermissionModeId: z.string().optional(),
     peerPermissionModeId: z.string().optional(),
+    // Set true by the UI after the user confirms the "still default .slp" warning; errors always block.
+    acknowledgeDefaultCatalog: z.boolean().optional(),
   }),
   output: z.object({
     runId: z.string(),

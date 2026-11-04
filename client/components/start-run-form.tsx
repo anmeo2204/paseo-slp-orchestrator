@@ -84,12 +84,13 @@ export function StartRunForm({
 
   // Trimmed here because a pasted path often carries a trailing newline that git would reject.
   // Omit baseBranch and force FULL_AUTO so the daemon auto-detects the project's checked-out branch and runs autonomously.
-  const submitRun = () => {
+  const submitRun = (acknowledgeDefaultCatalog = false) => {
     startRun.mutate(
       {
         repoPath: effectiveRepoPath.trim(),
         name: runName.trim(),
         mode: "FULL_AUTO",
+        acknowledgeDefaultCatalog,
         supervisorProvider: roleProviderModels.supervisor?.value,
         leadProvider: roleProviderModels.lead?.value,
         peerProvider: roleProviderModels.peer?.value,
@@ -108,6 +109,8 @@ export function StartRunForm({
   // Daemon-side failures (not a git repo, detached HEAD) arrive as thrown RPC errors and are shown inline under the button.
   const startErrorMessage =
     describeRpcError(startRun.error) ?? describeRpcError(projectPrompts.error);
+  // The guard's confirmable blockers (default catalog / uncommitted) let the user proceed after reading them.
+  const isAcknowledgeableBlock = Boolean(describeRpcError(startRun.error)?.includes("Cannot start run"));
   const isStartDisabled =
     !settings.isEditable ||
     effectiveRepoPath.trim() === "" ||
@@ -145,9 +148,18 @@ export function StartRunForm({
         accessibilityLabel="Start SLP run"
         // Missing project or model choices are blocked before a run can leave worktrees behind.
         disabled={isStartDisabled}
-        onPress={submitRun}
+        onPress={() => submitRun(false)}
       />
       {startErrorMessage ? <Text style={styles.dangerText}>{startErrorMessage}</Text> : null}
+      {/* Confirmable guard (still-default .slp or uncommitted): let the user proceed after reading why. */}
+      {isAcknowledgeableBlock && !startRun.isPending ? (
+        <ActionButton
+          styles={styles}
+          label="Start anyway (proceed with current .slp)"
+          accessibilityLabel="Start run despite default or uncommitted configuration"
+          onPress={() => submitRun(true)}
+        />
+      ) : null}
     </View>
   );
 }

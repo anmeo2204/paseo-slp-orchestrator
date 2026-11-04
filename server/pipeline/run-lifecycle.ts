@@ -36,6 +36,8 @@ export interface StartRunInput {
   providers: Partial<ProviderChoices>;
   // Tests and RPC callers may pin the policy; otherwise the host settings at start time apply.
   orchestration?: OrchestrationSettings;
+  // Set by the UI after the user confirms the "still default .slp" warning; validator errors always block.
+  acknowledgeDefaultCatalog?: boolean;
 }
 
 async function currentOrchestrationSettings(ctx: PipelineContext): Promise<OrchestrationSettings> {

@@ -5,8 +5,10 @@ import type { UiStyles } from "../styles";
 import { useProjectPrompts } from "../use-project-prompts";
 import { describeRpcError } from "../use-run";
 import { ActionButton } from "./action-button";
+import { CopyPostInitPromptButton } from "./copy-post-init-prompt-button";
 import { RepositoryFolderPicker } from "./repository-folder-picker";
 import { SlpSkillInitializer } from "./slp-skill-initializer";
+import { ProjectSetupPanel } from "./project-setup-panel";
 
 export interface ProjectSkillsTabProps {
   styles: UiStyles;
@@ -51,6 +53,21 @@ export function ProjectSkillsTab({
 
       {selectedRepositoryPath.trim() ? (
         <View style={styles.stack}>
+          {/* Numbered workflow so operators follow the role-creation steps in order before Start Run. */}
+          <View style={styles.providerRoleCard}>
+            <Text style={styles.bodyText}>Create roles before Start Run</Text>
+            {[
+              "1. Preview setup, then Apply setup — detect packages and generate .slp roles, TEST_POLICY, paseo.json, .worktreeinclude and .gitignore.",
+              "2. Init skill slp-manager, then ask a coding agent (Claude Code / Codex) to fill descriptions, owned_paths and the TEST_POLICY TODO commands.",
+              "3. Dry run — run setup and the fast tests in a throwaway worktree (no tokens).",
+              "4. Validate — fix every ✗ error (⚠ warnings are advisory).",
+              "5. Commit .slp/, paseo.json and .gitignore on the checked-out branch.",
+              "6. Start run (SLP tab). A still-default or uncommitted .slp warns; validator errors block.",
+            ].map((step) => (
+              <Text key={step} style={styles.mutedText}>{step}</Text>
+            ))}
+          </View>
+
           {/* Display discovered peer role workflows and allow manual reload after editing markdown files on disk. */}
           <View style={styles.providerRoleCard}>
             <Text style={styles.bodyText}>Role Workflows</Text>
@@ -81,7 +98,12 @@ export function ProjectSkillsTab({
               Installs or updates the slp-manager SKILL.md and reference guides inside this project.
             </Text>
             <SlpSkillInitializer styles={styles} repoPath={selectedRepositoryPath} />
+            {/* After init, hand this prompt to a coding agent to fill the generated roles' business parts. */}
+            <CopyPostInitPromptButton styles={styles} />
           </View>
+
+          {/* Detect packages, scaffold roles, dry run and validate the project setup. */}
+          <ProjectSetupPanel styles={styles} repoPath={selectedRepositoryPath} />
         </View>
       ) : (
         <Text style={styles.mutedText}>

@@ -59,6 +59,12 @@ describe("slp-manager project skill provisioning", () => {
       "utf8",
     );
     expect(installedSkillText).toContain(`name: ${SLP_MANAGER_SKILL_NAME}`);
+    expect(installedSkillText).toContain("## 0. Fastest Path: Use the Project Setup Panel, Then Fill the Business Parts");
+    // The skill must point agents at the Project Setup panel mechanisms so it stays in lockstep with the RPCs.
+    expect(installedSkillText).toContain("Dry Run");
+    expect(installedSkillText).toContain("Validate");
+    expect(installedSkillText).toContain("paseo.json");
+    expect(installedSkillText).toContain(".worktreeinclude");
     expect(installedSkillText).toContain("## 1. How the 3-Tier SLP Architecture Works");
     expect(installedSkillText).toContain("## 2. Organizing `.slp/` by Functional Groups & Shared Standards");
     expect(installedSkillText).toContain("├── engineering/");

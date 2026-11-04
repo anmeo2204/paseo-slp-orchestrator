@@ -8,6 +8,8 @@ import {
   approvePipelineGateRpc,
   approveMainRpc,
   dismissArchiveWarningRpc,
+  dryRunProjectRpc,
+  dryRunStatusRpc,
   getRunRpc,
   listBoardTicketsRpc,
   listPeerQuestionsRpc,
@@ -15,8 +17,10 @@ import {
   restoreRunRpc,
   resumeTaskRpc,
   saveBoardSpecFromUiRpc,
+  scaffoldProjectRpc,
   setRunModeRpc,
   startRunRpc,
+  validateProjectRpc,
   tailLogRpc,
   initializeProjectPromptsRpc,
   initSlpManagerSkillRpc,
@@ -34,6 +38,10 @@ import { loadProjectPrompts } from "./project-prompts/load";
 import { join } from "node:path";
 import { roleRunDefaults } from "./runtime/run-defaults";
 import { ensureSlpManagerSkill } from "./skills/slp-manager-skill";
+import { validateProjectConfiguration } from "./project-setup/project-validator";
+import { scaffoldProjectSetup } from "./project-setup/scaffold";
+import { startDryRunJob, getDryRunJobStatus } from "./project-setup/dry-run";
+import { checkStartRunGuard } from "./project-setup/start-run-guard";
 
 function summarizeRun(run: Run): RunSummary {
   // Counts are derived on demand so the list follows the dynamic pipeline state after each stage handoff.
@@ -81,6 +89,25 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
     await assertGitRepository(repoPath);
     return ensureSlpManagerSkill(repoPath);
   });
+
+  server.handle(validateProjectRpc, async ({ repoPath }) => {
+    // Read-only: safe to call from the Reload button and before Start Run without side effects.
+    await assertGitRepository(repoPath);
+    return validateProjectConfiguration(repoPath);
+  });
+
+  server.handle(scaffoldProjectRpc, async ({ repoPath, dryRun, overwrite }) => {
+    await assertGitRepository(repoPath);
+    return scaffoldProjectSetup(repoPath, { dryRun, overwrite });
+  });
+
+  server.handle(dryRunProjectRpc, async ({ repoPath }) => {
+    await assertGitRepository(repoPath);
+    // Start in the background and return immediately; the UI polls dryRunStatusRpc for the result.
+    return startDryRunJob(repoPath);
+  });
+
+  server.handle(dryRunStatusRpc, ({ repoPath }) => getDryRunJobStatus(repoPath));
   // Handlers receive the SDK instance, which the entry point never gets, so each one parks it in the holder for the sweeper and pipeline.
   server.handle(listRunsRpc, (_input, { paseo }) => {
     ctx.holder.capture(paseo);
@@ -104,12 +131,20 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
     const supervisor = roleRunDefaults(defaults.roles.supervisor, input.supervisorProvider, input.supervisorThinkingOptionId, input.supervisorPermissionModeId);
     const lead = roleRunDefaults(defaults.roles.lead, input.leadProvider, input.leadThinkingOptionId, input.leadPermissionModeId);
     const peer = roleRunDefaults(defaults.roles.peer, input.peerProvider, input.peerThinkingOptionId, input.peerPermissionModeId);
+    // Pre-flight guard: block on validator errors and an untailored/uncommitted .slp before any
+    // worktree or agent is created. This lives in the handler so direct startRun() callers (tests)
+    // are unaffected while the UI path is protected.
+    const guard = await checkStartRunGuard(input.repoPath, input.acknowledgeDefaultCatalog ?? false);
+    if (guard.blockers.length > 0) {
+      throw new Error(`Cannot start run:\n- ${guard.blockers.join("\n- ")}`);
+    }
     // Awaited and returned so a failure while creating worktrees or agents reaches the UI's inline error.
     return startRun(ctx, {
       repoPath: input.repoPath,
       name: input.name,
       baseBranch: input.baseBranch,
       mode: input.mode ?? defaults.mode,
+      acknowledgeDefaultCatalog: input.acknowledgeDefaultCatalog,
       // Keep provider models and their thinking preferences together through the run boundary.
       providers: {
         supervisor: supervisor.provider,

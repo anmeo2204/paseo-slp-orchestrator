@@ -24,6 +24,20 @@ Use this skill whenever the user asks you to explain the SLP (Supervisor–Lead�
 
 ---
 
+## 0. Fastest Path: Use the Project Setup Panel, Then Fill the Business Parts
+
+The SLP Orchestrator **Skills** tab now scaffolds and checks most of this for you, so you rarely author the whole \`.slp/\` by hand:
+
+1. **Preview / Apply setup** — detects every package by its marker file (\`composer.json\`, \`go.mod\`, \`package.json\` → Next/Angular/React/Node, \`pubspec.yaml\`, Gradle Android, \`*.xcodeproj\`) regardless of folder layout, then generates: one developer per stack with \`owned_paths\`, shared advisors, a QA grader, a \`.slp/standards/TEST_POLICY.md\` stub, \`paseo.json\` worktree \`setup\` (installs each package), \`.worktreeinclude\` (copies \`.env\` into worktrees) and the \`.gitignore\` lines each stack needs for clean pipeline merges. Existing files are never overwritten unless you ask.
+2. **Dry Run** — creates a throwaway worktree, runs \`paseo.json\` setup and the \`TEST_POLICY\` fast commands, reports pass/fail and timing, then removes the worktree. No agents, no tokens.
+3. **Validate** — checks tier/kind, that every \`slp_*\` tool exists, that test commands are real, stack coverage, gitignored output, worktree bootstrap and committed state. Errors block Start Run; warnings are advisory.
+
+**Your job as the coding agent** is the part the panel cannot infer: write each developer's \`description\` and \`owned_paths\` to match the real subsystems, fill the \`TODO\` commands in \`TEST_POLICY.md\` with the project's actual test/lint/build commands, name the main modules for the architect, and answer the human's stack-specific questions (for example whether an integration suite needs a real database). After editing, run **Dry Run** and **Validate**, then **commit \`.slp/\`, \`paseo.json\` and \`.gitignore\`** before Start Run — worktrees branch from the committed base, so uncommitted files are invisible to Leads and peers. Start Run warns on a still-default catalog and blocks on validator errors or an uncommitted \`.slp\`.
+
+Sections 1–6 below are the reference for the parts you fill in and for authoring or upgrading \`.slp/\` by hand when a stack has no preset.
+
+---
+
 ## 1. How the 3-Tier SLP Architecture Works
 
 SLP orchestrates software delivery across three tiers and four runtime roles (\`supervisor\`, \`master_lead\`, \`qa_lead\`, \`peer\`), backed by an SQLite state store, a project-scoped **Spec & Brief Kanban Board** (\`SPEC -> BRIEF -> SCORE -> REWORK\`), and a loopback MCP bus (\`${BUS_SERVER_NAME}\`):
