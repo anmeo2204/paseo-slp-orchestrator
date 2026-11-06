@@ -90,7 +90,7 @@ export const PipelineEnvelopeSchema = z.object({
 });
 export type PipelineEnvelope = z.infer<typeof PipelineEnvelopeSchema>;
 
-// A spec shorter than this cannot describe screens, states and scenarios, so it is treated as missing.
+// A spec shorter than this cannot describe scope, behaviors and scenarios, so it is treated as missing.
 export const PRODUCT_SPEC_MIN_LENGTH = 80;
 const ProductSpecSchema = z.string().trim().min(PRODUCT_SPEC_MIN_LENGTH);
 
@@ -98,7 +98,7 @@ const ProductSpecSchema = z.string().trim().min(PRODUCT_SPEC_MIN_LENGTH);
 export const DelegatedFeatureSchema = z.object({
   name: z.string().trim().min(1),
   acceptanceCriteria: z.string().trim().min(10),
-  // Human-approved screens, states and Given/When/Then interactions; required per feature by DelegationSubmissionSchema.
+  // Human-approved scope, behaviors, surfaces and Given/When/Then scenarios; required per feature by DelegationSubmissionSchema.
   productSpec: ProductSpecSchema.optional(),
   worktree: z.string().trim().min(1).optional(),
 });
@@ -128,7 +128,7 @@ export const DelegationSubmissionSchema = z
         ? submission.tasks.every((task) => Boolean(task.productSpec))
         : Boolean(submission.productSpec),
     {
-      message: `Provide the human-approved productSpec (at least ${PRODUCT_SPEC_MIN_LENGTH} characters: screens and elements, states, Given/When/Then interactions, business rules, out of scope) for every feature before delegating.`,
+      message: `Provide the human-approved productSpec (at least ${PRODUCT_SPEC_MIN_LENGTH} characters: scope and out of scope, observable behaviors, surfaces and states where there are any, business rules and edge cases, Given/When/Then scenarios, unknowns and assumptions) for every feature before delegating.`,
     },
   );
 export type DelegationSubmission = z.infer<typeof DelegationSubmissionSchema>;

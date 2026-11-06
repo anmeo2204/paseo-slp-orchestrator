@@ -40,6 +40,25 @@ describe("project prompt initialization", () => {
     expect(await readFile(qaPath, "utf8")).toBe(customizedQa);
   });
 
+  // Improving the seeded spec and brief guidance must never rewrite a project that already authored its root roles.
+  it("keeps pre-existing root role files when the seeded spec and brief guidance change", async () => {
+    const repoPath = await createDirectory("project-prompts");
+    await loadProjectPrompts(repoPath);
+    const legacySupervisor = "---\nrole: supervisor\ndescription: Legacy supervisor.\n---\nDraft the 5-section Product Spec.";
+    const legacyLead = "---\nrole: master-lead\ndescription: Legacy lead.\n---\nWrite a brief with approach and criteria.";
+    await writeFile(join(repoPath, ".slp/SUPERVISOR.md"), legacySupervisor);
+    await writeFile(join(repoPath, ".slp/LEAD.md"), legacyLead);
+
+    const configuration = await loadProjectPrompts(repoPath);
+    expect(configuration.supervisor.workflow).toBe("Draft the 5-section Product Spec.");
+    expect(configuration.lead.workflow).toBe("Write a brief with approach and criteria.");
+    expect(await readFile(join(repoPath, ".slp/SUPERVISOR.md"), "utf8")).toBe(legacySupervisor);
+    expect(await readFile(join(repoPath, ".slp/LEAD.md"), "utf8")).toBe(legacyLead);
+    // The engine injects the project file verbatim, so none of the new seeded guidance leaks into an old project.
+    expect(systemPromptFor("supervisor", configuration)).not.toContain("Observable behaviors");
+    expect(systemPromptFor("master_lead", configuration)).not.toContain("the data and API contracts where the change has them");
+  });
+
   // Older versions left data in .slp; it must not prevent seeding user-editable configuration.
   it("initializes a legacy log directory without replacing its data", async () => {
     const repoPath = await createDirectory("project-prompts");
@@ -162,6 +181,14 @@ describe("project system prompt composition", () => {
     expect(defaultQaPrompt).not.toContain("Build what the locked brief describes");
     expect(defaultDeveloperPrompt).not.toContain("scorecard entry per criterion");
     expect(defaultLeadPrompt).toContain("Pipeline shape (enforced): [planning]? -> implement.");
+    // The brief is the only technical contract the developer and QA see, so approach must carry the design.
+    expect(defaultLeadPrompt).toContain("the integration points with the rest of the system");
+    expect(defaultLeadPrompt).toContain("the data and API contracts where the change has them");
+    expect(defaultLeadPrompt).toContain("when a dependency fails, input is invalid or the operation is interrupted");
+    // Traceability lets the QA Lead see which product spec scenario is not covered by any criterion yet.
+    expect(defaultLeadPrompt).toContain("Each requirement names the product spec scenario or acceptance criterion it covers");
+    // inScope is schema-required, so the workflow must name it instead of letting a Lead discover it from a rejection.
+    expect(defaultLeadPrompt).toContain("inScope: the work the developer is expected to do");
     // The Lead's catalog shows each peer's kind because it decides which stage the peer may join.
     expect(defaultLeadPrompt).toContain("(Architect, kind: advisor)");
     for (const seededPrompt of [defaultDeveloperPrompt, defaultQaPrompt, defaultLeadPrompt]) {

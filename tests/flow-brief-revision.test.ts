@@ -1,5 +1,6 @@
 // A locked brief changes only through slp_revise_brief. Pause stops peer writes; resume delivers the new brief.
 import { describe, expect, it } from "vitest";
+import { DelegationSubmissionSchema, PipelineBriefSchema, PRODUCT_SPEC_MIN_LENGTH } from "../shared/pipeline";
 import { useFlowFixture } from "./helpers/flow-fixture";
 import {
   SAMPLE_BRIEF,
@@ -48,5 +49,28 @@ describe("locked brief revision", () => {
     expect(flow.run(runId).agents[developerPeerId].pausedAt).toBeNull();
     const peerMail = flow.mailTo(runId, developerPeerId).at(-1)?.text ?? "";
     expect(peerMail).toContain("Invalid rows are listed.");
+  });
+});
+
+// The richer brief guidance in .slp/LEAD.md is advisory: the wire contract must keep accepting the
+// briefs every existing project and stored run already produced.
+describe("brief schema compatibility", () => {
+  it("still accepts a minimal brief with a one-sentence approach and no outOfScope", () => {
+    const minimalBrief = {
+      approach: "Reuse the existing importer.",
+      criteria: [{ id: "C1", requirement: "Valid rows are imported.", verification: "npm test" }],
+      inScope: ["the importer module"],
+    };
+    const parsed = PipelineBriefSchema.safeParse(minimalBrief);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.outOfScope).toEqual([]);
+  });
+
+  it("still accepts a product spec that meets only the minimum length", () => {
+    const shortSpec = "A".repeat(PRODUCT_SPEC_MIN_LENGTH);
+    expect(DelegationSubmissionSchema.safeParse({
+      acceptanceCriteria: "Import works end to end.",
+      productSpec: shortSpec,
+    }).success).toBe(true);
   });
 });

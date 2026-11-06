@@ -229,6 +229,30 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).not.toContain("design-contracts\` -> \`implement\` -> \`verify-and-review");
   });
 
+  // The skill authors the .slp files the engine injects, so its spec and brief guidance must match DEFAULT_WORKFLOWS.
+  it("documents the same product spec sections and brief contents as the seeded workflows", () => {
+    const skillMarkdown = renderSlpManagerSkillMarkdown();
+    const supervisorWorkflow = defaultProjectPrompts().supervisor.workflow;
+    const leadWorkflow = defaultProjectPrompts().lead.workflow;
+
+    for (const specTopic of ["scope and out of scope", "observable behaviors", "edge cases", "unknowns and assumptions"]) {
+      expect(skillMarkdown.toLowerCase()).toContain(specTopic);
+    }
+    for (const briefTopic of ["integration points", "data and API contracts", "failure behavior"]) {
+      expect(skillMarkdown).toContain(briefTopic);
+    }
+    // A generated .slp must teach the traceability the QA Lead relies on to spot uncovered scenarios.
+    expect(skillMarkdown).toContain("names the product spec scenario or acceptance criterion it covers");
+    expect(leadWorkflow).toContain("names the product spec scenario or acceptance criterion it covers");
+    // Surfaces are conditional in both documents so non-UI work is not forced to invent screens.
+    expect(skillMarkdown).toContain("where the feature has any");
+    expect(supervisorWorkflow).toContain("where the feature has a UI or API surface");
+    // Nothing may pin a section count now that the list is open-ended.
+    expect(skillMarkdown).not.toMatch(/5-section|five-section/);
+    // The wire contract itself is unchanged, so the exact brief shape must survive the rewording.
+    expect(skillMarkdown).toContain("{ approach, criteria: [{ id, requirement, verification }], inScope, outOfScope }");
+  });
+
   it("keeps the QA engineer as the only seeded integration-tier peer so QA pipelines can run heavy verification", () => {
     const integrationPeerRoles = defaultProjectPrompts().peers
       .filter((seededPeer) => parseYaml(seededPeer.frontMatter).tier === "integration")

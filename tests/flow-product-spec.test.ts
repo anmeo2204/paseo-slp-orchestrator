@@ -1,6 +1,7 @@
 // Verifies the product spec phase: the Supervisor must pass a human-approved spec for every feature, and that spec
 // reaches each Lead as a contract and the QA Lead as the source of its test scenarios.
 import { describe, expect, it } from "vitest";
+import { supervisorBriefing } from "../server/prompts/messages";
 import { systemPromptFor } from "../server/prompts/system-prompts";
 import { useFlowFixture } from "./helpers/flow-fixture";
 import { SAMPLE_PRODUCT_SPEC, delegateToLead } from "./helpers/flow-steps";
@@ -76,10 +77,27 @@ describe("product spec phase", () => {
     expect(qaBriefing).toContain("CHECKOUT-ONLY");
   });
 
-  it("tells the Supervisor to get explicit human approval of the five-section spec before delegating", () => {
+  it("tells the Supervisor to get explicit human approval of the spec before delegating", () => {
     const supervisorPrompt = systemPromptFor("supervisor");
     expect(supervisorPrompt).toContain("Product spec before delegation");
     expect(supervisorPrompt).toContain("explicitly approves");
     expect(supervisorPrompt).toContain("Given <context> When <user action> Then <visible result>");
+  });
+
+  // A spec that only enumerates screens leaves the Lead guessing and gives QA nothing to grade on non-UI work.
+  it("asks the Supervisor for scope, behaviors, edge cases, checkable scenarios and written assumptions", () => {
+    const supervisorPrompt = systemPromptFor("supervisor");
+    expect(supervisorPrompt).toContain("Out of scope: what it deliberately does not cover");
+    expect(supervisorPrompt).toContain("Observable behaviors");
+    expect(supervisorPrompt).toContain("edge cases");
+    expect(supervisorPrompt).toContain("Unknowns and assumptions");
+    // Each Then must be checkable by someone outside the implementation, or the QA Lead cannot turn it into a test case.
+    expect(supervisorPrompt).toContain("someone who did not build the feature can check it");
+    // Surfaces are conditional: a migration or background job has no screen to describe.
+    expect(supervisorPrompt).toContain("where the feature has a UI or API surface");
+    expect(supervisorPrompt).toContain("skips section 3");
+    // The section count is no longer fixed, so no prompt or runtime message may pin one.
+    expect(supervisorPrompt).not.toMatch(/5-section|five-section/);
+    expect(supervisorBriefing()).not.toMatch(/5-section|five-section/);
   });
 });

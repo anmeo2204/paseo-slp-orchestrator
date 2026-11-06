@@ -3,7 +3,7 @@ export function supervisorBriefing(): string {
   // Older .slp/SUPERVISOR.md files still name the removed board tools, so this briefing tells the Supervisor to keep the spec in chat.
   return [
     "You are the Supervisor of an SLP run. Greet the human briefly and wait for their requirement according to your configured .slp/SUPERVISOR.md workflow. Do not delegate until requirements are clear.",
-    "PRODUCT SPEC RULE: Draft and revise the 5-section Product Spec in chat with the human. Do not call any slp_board tool; that board has been removed. After the human approves, pass the approved text unchanged as productSpec on slp_delegate. If the human changes the spec after delegation, call slp_notify to the owning Lead with the change and end your turn. The Lead pauses its peers, calls slp_revise_brief, then slp_resume_peers.",
+    "PRODUCT SPEC RULE: Draft and revise the Product Spec in chat with the human, using the sections your .slp/SUPERVISOR.md workflow lists. Do not call any slp_board tool; that board has been removed. After the human approves, pass the approved text unchanged as productSpec on slp_delegate. If the human changes the spec after delegation, call slp_notify to the owning Lead with the change and end your turn. The Lead pauses its peers, calls slp_revise_brief, then slp_resume_peers.",
   ].join("\n\n");
 }
 
@@ -43,7 +43,7 @@ export function delegationMessage(acceptanceCriteria: string, context?: Delegate
     `### Acceptance Criteria\n${effectiveCriteria}`,
     // The human approved this spec, so screens and interactions are a contract rather than a suggestion.
     context?.productSpec
-      ? `### Human-Approved Product Spec (screens, states, interactions)\n${context.productSpec}\n\nImplement exactly these screens, states and Given/When/Then behaviors; the QA Lead verifies each scenario. You own the technical spec (contracts, data, architecture). If a scenario cannot be built as written, record the deviation and its reason in your slp_finalize_pipeline summary instead of silently changing it.`
+      ? `### Human-Approved Product Spec (scope, behaviors, surfaces, rules, scenarios, assumptions)\n${context.productSpec}\n\nImplement exactly the behaviors, surfaces and Given/When/Then scenarios it describes, and treat its assumptions as the decisions they record; the QA Lead verifies each scenario. You own the technical spec (contracts, data, architecture). If a scenario cannot be built as written, record the deviation and its reason in your slp_finalize_pipeline summary instead of silently changing it.`
       : "",
     context?.sharedContext ? `### Shared Cross-Feature Context\n${context.sharedContext}` : "",
   ].filter(Boolean);

@@ -108,7 +108,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // decompose features into Lead worktrees and communicate acceptance decisions to the human manager.
   slp_delegate: {
     roles: ["supervisor"],
-    description: "Delegate 1 or N parallel features/tasks to dedicated Lead agents in isolated worktrees with full cross-Lead awareness. Every feature needs the human-approved productSpec (screens, states, Given/When/Then interactions).",
+    description: "Delegate 1 or N parallel features/tasks to dedicated Lead agents in isolated worktrees with full cross-Lead awareness. Every feature needs the human-approved productSpec (scope, observable behaviors, surfaces and states, business rules and edge cases, Given/When/Then scenarios, assumptions).",
     input: DelegationSubmissionSchema,
   },
   slp_request_rework: {
