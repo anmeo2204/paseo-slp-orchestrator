@@ -1,0 +1,89 @@
+#!/bin/bash
+# Launches `codex` under the SLP Seatbelt policy (tools/sandbox/slp-codex.sb). Intended as the `command` of a
+# dedicated Paseo provider (`codex-slp`), which Paseo spawns as: slp-codex-sandbox app-server [args...].
+# Fails closed: any missing input stops the provider instead of starting Codex unsandboxed.
+set -euo pipefail
+
+fail() { echo "slp-codex-sandbox: $*" >&2; exit 78; }
+
+[[ "$(uname -s)" == "Darwin" ]] || fail "Seatbelt is macOS-only"
+[[ -x /usr/bin/sandbox-exec ]] || fail "/usr/bin/sandbox-exec not found"
+# A process that is already sandboxed cannot apply a second profile, and an outer sandbox is not ours to trust.
+[[ -z "${SLP_SANDBOXED:-}" ]] || fail "refusing to nest: already running under the SLP sandbox"
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+profile="${SLP_SANDBOX_PROFILE:-$script_dir/slp-codex.sb}"
+[[ -f "$profile" ]] || fail "profile not found: $profile"
+
+real_path() { /usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+regex_escape() { /usr/bin/python3 -c 'import re,sys; print(re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", sys.argv[1]))' "$1"; }
+
+home_dir="$(real_path "$HOME")"
+slp_state_dir="$(real_path "${SLP_HOME:-$home_dir/.slp-orchestrator}")"
+paseo_home="$(real_path "${PASEO_HOME:-$home_dir/.paseo}")"
+plugin_source_dir="$(real_path "${SLP_PLUGIN_SOURCE_DIR:-$script_dir/../..}")"
+codex_home="$(real_path "${SLP_CODEX_HOME:-$home_dir/.codex-slp}")"
+manager_codex_home="$(real_path "$home_dir/.codex")"
+user_tmp_dir="$(real_path "${TMPDIR:-$(getconf DARWIN_USER_TEMP_DIR)}")"
+user_cache_dir="$(real_path "$(getconf DARWIN_USER_CACHE_DIR)")"
+# The per-user temp dir holds other programs' control sockets (browsers, editors, Codex hosts), so each session gets
+# a private directory of its own and only that one is writable and reachable over Unix sockets.
+case "$user_tmp_dir" in /private/var/folders/*) ;; *) fail "unexpected per-user temp dir '$user_tmp_dir'" ;; esac
+session_tmp_dir="$(real_path "$(mktemp -d "$user_tmp_dir/slp-codex.XXXXXX")")"
+
+# Main repositories whose .git may receive commits from SLP worktrees, colon-separated (provider `env`).
+[[ -n "${SLP_SANDBOX_REPOS:-}" ]] || fail "SLP_SANDBOX_REPOS is not set (main repositories SLP may commit to)"
+git_repos_re=""
+IFS=: read -r -a listed_repos <<< "$SLP_SANDBOX_REPOS"
+for listed_repo in "${listed_repos[@]}"; do
+  [[ -d "$listed_repo/.git" ]] || fail "SLP_SANDBOX_REPOS entry is not a git checkout: $listed_repo"
+  git_repos_re+="${git_repos_re:+|}$(regex_escape "$(real_path "$listed_repo")")"
+done
+
+[[ -d "$codex_home" ]] || fail "dedicated Codex home missing: $codex_home (see the feasibility report, setup step)"
+[[ "$codex_home" != "$manager_codex_home" ]] || fail "SLP_CODEX_HOME must not be the Manager's ~/.codex"
+
+bus_port="$(tr -d '[:space:]' < "$slp_state_dir/bus-port" 2>/dev/null || true)"
+[[ "$bus_port" =~ ^[0-9]+$ ]] && (( bus_port > 0 && bus_port < 65536 )) || fail "invalid SLP bus port in $slp_state_dir/bus-port"
+(( bus_port < 39001 || bus_port > 39010 )) || fail "bus port $bus_port collides with the sandbox test-port pool"
+
+# The daemon must listen on loopback only; a LAN-bound daemon is reachable through addresses Seatbelt cannot single out.
+listen="$(/usr/bin/plutil -extract daemon.listen raw -o - "$paseo_home/config.json" 2>/dev/null || true)"
+if [[ -z "$listen" ]]; then
+  listen="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("daemon",{}).get("listen",""))' "$paseo_home/config.json" 2>/dev/null || true)"
+fi
+case "$listen" in
+  127.0.0.1:*|localhost:*|"[::1]":*|"") ;;
+  *) fail "Paseo daemon listens on '$listen'; the sandbox requires a loopback-only daemon" ;;
+esac
+
+real_codex="${SLP_REAL_CODEX:-}"
+if [[ -z "$real_codex" ]]; then
+  while IFS= read -r candidate; do
+    [[ "$(real_path "$candidate")" == "$(real_path "${BASH_SOURCE[0]}")" ]] && continue
+    real_codex="$candidate"; break
+  done < <(type -aP codex)
+fi
+[[ -n "$real_codex" && -x "$real_codex" ]] || fail "codex binary not found (set SLP_REAL_CODEX)"
+
+export CODEX_HOME="$codex_home"
+export SLP_SANDBOXED=1
+export TMPDIR="$session_tmp_dir/"
+
+exec /usr/bin/sandbox-exec \
+  -D HOME_DIR="$home_dir" \
+  -D BUS_PORT="$bus_port" \
+  -D SLP_STATE_DIR="$slp_state_dir" \
+  -D PASEO_HOME="$paseo_home" \
+  -D PASEO_WORKTREES="$paseo_home/worktrees" \
+  -D PASEO_WORKTREES_RE="$(regex_escape "$paseo_home/worktrees")" \
+  -D CODEX_HOME_RE="$(regex_escape "$codex_home")" \
+  -D GIT_REPOS_RE="$git_repos_re" \
+  -D PASEO_APP_SUPPORT="$home_dir/Library/Application Support/Paseo" \
+  -D PLUGIN_SOURCE_DIR="$plugin_source_dir" \
+  -D CODEX_HOME_DIR="$codex_home" \
+  -D MANAGER_CODEX_HOME="$manager_codex_home" \
+  -D TMP_DIR="$session_tmp_dir" \
+  -D CACHE_DIR="$user_cache_dir" \
+  -f "$profile" \
+  "$real_codex" "$@"

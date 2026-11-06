@@ -6,6 +6,7 @@
 | Commit range | `7d784ed` (pre-remediation) → `c811349` |
 | Verified at | `c811349` |
 | Prepared for | Manager review. **Phase 1 is not marked closed by this report.** |
+| Status update | 2026-11-07, after the F2 trust-boundary review and Manager decisions. **Phase 1 security acceptance is NOT closed**; see §7 |
 
 > This report records what automated verification establishes. It does not claim live-Paseo validation; see
 > section 5 for the boundary between the two.
@@ -169,3 +170,89 @@ documented rather than claimed as guarantees, and none of them is a correctness 
 delivered scope.
 
 Phase 1 remains formally open pending the Manager's decision.
+
+*Superseded in part by §7 (2026-11-07):* the statement that no residual risk "is a correctness or authorization gap in the delivered scope" no longer holds for F2 at the host level. See §7.2.
+
+---
+
+## 7. Status after the F2 trust-boundary review (2026-11-07)
+
+Sources:
+- `PHASE1_F2_TRUST_BOUNDARY_REVIEW.md` (classification);
+- `PHASE1_LIVE_ACCEPTANCE_REPORT.md` (Run #15);
+- `PHASE1_SEATBELT_FEASIBILITY.md` (isolation prototype);
+- `PASEO_UPSTREAM_PLUGIN_RPC_AUTH_ISSUE.md` (upstream draft, not published).
+
+### 7.1 Manager decisions recorded
+
+1. **Accepted:** F2 is classified as *not secured against agent shell access*.
+2. **Phase 1 security acceptance is not closed.**
+3. **Selected:** a macOS Seatbelt sandbox prototype for Codex. The prototype is built and validated at the primitive level; it is **not deployed** (§7.3).
+4. **Approved:** preparing an upstream Paseo security request. Drafted, not published.
+5. **Adopted:** the interim trusted-input operating restrictions (§7.4).
+6. **Approved and implemented:** audit attribution (F2 review §11). It is backward compatible and does not change authorization (§7.5).
+
+### 7.2 Phase 1 status, by dimension
+
+| Dimension | Status | Basis |
+|---|---|---|
+| **Functional orchestration** | **Demonstrated live (partial)** | Run #15 on `codex`, FULL_AUTO: spec submission, approval gate, delegation, pipelines, QA and auto-merge, with tests reproduced. Scenario A is PARTIAL (escalation step not exercised); B–F not run. Automated suite: 429/429. |
+| **Approval enforcement through MCP tools** | **Enforced** | No bus tool writes an approved Spec record. Delegation is refused without a matching approval, in every mode and per feature. Live: Run #15 refused delegation before approval. Automated: F2 tests. |
+| **Approval enforcement against agent shell access** | **NOT enforced — unresolved, design-required** | The daemon admits every local client as `owner`, and plugin RPCs carry no caller identity. An agent with shell access can invoke `slp.spec.approve`, the gate approvals or `slp.run.approve_main`, or edit the run store. No in-plugin fix exists. Requires OS isolation (§7.3) and upstream caller identity (§7.6). |
+| **Provider-specific isolation readiness** | **Codex: prototype validated, not deployed. Claude / Cursor: none.** | Seatbelt enforces R1–R4 for Codex in 66 probes and controls. Deployment needs: Manager approval of a global Paseo provider change; a plugin provider-ID compatibility change; and a live validation run. Claude (`bypassPermissions`) and Cursor (ACP) agents have no isolation path yet. |
+
+The Phase 1 F2 statement must read, until the isolation in §7.3 is deployed and live-validated:
+
+> Product Spec approval is enforced for agents acting through SLP tools. It is not enforced against an agent that uses its shell to call Paseo or edit SLP state; SLP agents currently have such shell access.
+
+### 7.3 Isolation prototype (Task B)
+
+`tools/sandbox/` contains:
+- `slp-codex.sb`, the policy;
+- `slp-codex-sandbox`, a fail-closed wrapper meant as a Paseo provider `command`;
+- `validate-slp-sandbox.sh`, the probes.
+
+All probes matched on this machine. The proposed configuration change, rollback, `slp-live-repo` plan, residual risks and the comparison with the OS-user route are in `PHASE1_SEATBELT_FEASIBILITY.md`. Nothing was applied:
+- `~/.paseo/config.json` is unchanged;
+- no agent ran under the sandbox;
+- `slp-live-repo` is untouched.
+
+### 7.4 Interim operating restrictions (in force until §7.3 is deployed and live-validated)
+
+| # | Restriction |
+|---|---|
+| I-1 | **Treat every SLP agent as unconfined.** Until the sandboxed provider is deployed, agents can reach the daemon and the run store. After deployment, every SLP role must use the sandboxed provider. Claude and Cursor roles are not used in SLP runs until they have their own validated isolation. |
+| I-2 | **Trusted inputs only.** Run SLP only on repositories, specs, dependencies and tool output the Manager trusts not to prompt-inject agents. No untrusted issue text, web content or third-party repositories as input. |
+| I-3 | **No FULL_AUTO outside `slp-live-repo`.** Prefer SEMI_AUTO or STEP_BY_STEP_DEBUG, so a merge to base needs a gate. Gates are also forgeable by a shell-capable agent: this adds detection time, not prevention. |
+| I-4 | **Review before executing SLP output.** Do not run tests, package scripts, `paseo.json` setup scripts or builds from an SLP branch or a merged result before reviewing the diff, including `package.json` scripts, hooks and CI files. Agent-written code runs unsandboxed when the Manager or the daemon executes it. |
+| I-5 | **Audit after every run.** Compare `spec.approved`, `run.mode_changed`, `run.merged_to_base`, `run.started`, `run.archived`, `run.restored` and `run.aborted` against your own actions. Since §7.5, these rows read `from: "rpc:<method>"`, `actor: "rpc"`. Any such row you did not cause is an incident. `run.merged_to_base` with `actor: "engine"` is expected only in FULL_AUTO, triggered by the Supervisor. |
+| I-6 | **No plugin reload or daemon restart during an active run.** Re-run `tools/sandbox/validate-slp-sandbox.sh` after every macOS, Codex or Paseo update, before the next run. |
+| I-7 | **Scope.** Phase 1 validation uses only `slp-live-repo`. No client projects, and no credentials or secrets in the test repository. Archive Supervisor sessions of completed runs when they are no longer needed, since they keep shell access. |
+
+### 7.5 Audit attribution (Task A, implemented)
+
+`from: "manager"` was hard-coded at seven sites, including the FULL_AUTO auto-merge, which no human triggers. It is replaced as follows:
+- **Schema.** `CommLogEntrySchema` gains `actor: "rpc" | "engine" | "agent" | null` and `triggeredBy: string | null`, both nullable with defaults. Legacy rows parse unchanged as `actor: null`; no migration is needed and stored rows are not rewritten.
+- **RPC sites.** These log `from: "rpc:<method>"` with `actor: "rpc"`:
+  - `run.started`, `run.mode_changed`, `spec.approved`, `run.archived`, `run.restored`, `run.aborted`;
+  - `run.merged_to_base` when it comes via `slp.run.approve_main` or `slp.gate.approve`.
+
+  They are never logged as "manager": the runtime cannot tell the Manager's UI from another local client. The monitor shows a "UI/RPC (unauthenticated)" chip.
+- **FULL_AUTO auto-merge.** `approveMain` takes an explicit origin. The merge inside `slp_present_to_manager` logs `from: "engine"`, `actor: "engine"` and `triggeredBy: <Supervisor agent id>`, with the summary suffix "FULL_AUTO auto-merge after slp_present_to_manager".
+- **Agent entries.** Entries sent from one of the run's persisted agents get `actor: "agent"`, matched against stored agent records, never against caller-supplied text. Bus tool-call rows also carry `triggeredBy: <agent id>`.
+- **Unchanged.** Authorization behaviour: no RPC, gate or approval check was altered.
+- **Tests.** `tests/audit-attribution.test.ts` adds six tests: engine auto-merge, `approve_main` over RPC, `gate.approve` over RPC, the six other RPC sites, agent inference, and legacy-row parsing. `tests/spec-approval.test.ts` is updated. `npm run typecheck` is clean; `npx vitest run` passes 46 files, **429/429**.
+- **Gap noted, not in scope.** `approvePipelineGate` and `dismissArchiveWarning` write no audit row at all.
+
+### 7.6 Remaining Phase 1 blockers
+
+1. **F2 host-level enforcement** (High). Deploy the Codex sandbox, which requires:
+   - Manager approval of the global provider configuration (`PHASE1_SEATBELT_FEASIBILITY.md` §7);
+   - the plugin provider-ID compatibility change (§8);
+   - a live validation run on `slp-live-repo` (§10).
+2. **Isolation for non-Codex providers**, or a decision to run Phase 1 SLP on Codex only.
+3. **Upstream caller identity.** Manager approval to publish `PASEO_UPSTREAM_PLUGIN_RPC_AUTH_ISSUE.md`; then the plugin adopts `requires: "interactive-owner"` once Paseo supports it.
+4. **Live scenarios.** Scenario A step A8 (escalation), Scenario C (F1 Brief revision during a live shell command), and Scenarios B, D, E and F (`PHASE1_LIVE_TEST_RUNBOOK.md`).
+5. **Daemon-side Codex home** for session forking under the sandbox (feasibility residual 9). This is verified only by the first live sandboxed run.
+
+**Recommendation:** keep Phase 1 **open**. Functional orchestration and MCP-level approval enforcement are accepted on the evidence above. Security acceptance waits for blockers 1, 3 and the live scenarios, with blocker 2 resolved by either isolation or a Codex-only scope decision. Phase 2 has not been started.

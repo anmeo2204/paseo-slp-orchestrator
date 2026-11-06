@@ -371,6 +371,12 @@ behavioural observations:
    gate; not exercised live by design. *Update 2026-11-07:* confirmed by code inspection of the running daemon in
    `PHASE1_F2_TRUST_BOUNDARY_REVIEW.md`. Paseo admits every local client as `owner` and forwards no caller
    identity to plugin RPCs. **F2 is not secured against agent shell access**, and no in-plugin fix is possible.
+   *Update 2026-11-07 (Manager decisions):*
+   - The classification is accepted, and Phase 1 security acceptance stays open.
+   - A Codex Seatbelt sandbox is prototyped but not deployed (`PHASE1_SEATBELT_FEASIBILITY.md`).
+   - Interim operating restrictions I-1 to I-7 apply (`PHASE1_CLOSURE_REPORT.md` §7.4).
+   - Audit rows written from now on attribute RPC actions as `rpc:<method>` and the FULL_AUTO merge as `engine`.
+   - Run #15's stored rows keep their original `from: "manager"`.
 
 ---
 

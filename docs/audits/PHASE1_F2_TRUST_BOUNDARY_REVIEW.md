@@ -327,7 +327,18 @@ state; SLP agents currently have such shell access."*
 
 ---
 
+**Decisions recorded 2026-11-07.**
+1. Accepted.
+2. (a) Seatbelt for Codex: prototyped and not deployed (`PHASE1_SEATBELT_FEASIBILITY.md`).
+3. Approved; drafted in `PASEO_UPSTREAM_PLUGIN_RPC_AUTH_ISSUE.md`, not published.
+4. Adopted, expanded to I-1 to I-7 in `PHASE1_CLOSURE_REPORT.md` §7.4.
+5. Approved; implemented (§11).
+
 ## 11. Separate finding — audit attribution of engine and RPC actions
+
+> **Status: implemented 2026-11-07** as proposed below, with one refinement. Agent attribution is inferred
+> centrally: an entry whose `from` is one of the run's persisted agent IDs gets `actor: "agent"`. Bus tool-call
+> rows carry `triggeredBy`. Details and tests: `PHASE1_CLOSURE_REPORT.md` §7.5.
 
 **Observed (Run #15).** `run.merged_to_base` was logged `from: "manager"`, although the merge ran inside the
 Supervisor's `slp_present_to_manager` (FULL_AUTO auto-merge, `run-lifecycle.ts:282` → `approveMain`).

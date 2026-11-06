@@ -152,7 +152,9 @@ sqlite3 "$SLP_DB" "select json_extract(payload,'\$.specApprovals') from runs whe
 sqlite3 "$SLP_DB" "select json_extract(payload,'\$.kind'), json_extract(payload,'\$.outcome'),
                           substr(json_extract(payload,'\$.summary'),1,90) from comm_logs
                    where run_id='$RUN_A' and json_extract(payload,'\$.kind') like 'spec.%' order by log_id;"
-# Expect spec.submitted (from Supervisor) and spec.approved (from "manager") as separate events
+# Expect spec.submitted (from the Supervisor, actor "agent") and spec.approved as separate events.
+# spec.approved reads from "rpc:slp.spec.approve", actor "rpc", on builds after the 2026-11-07 attribution change
+# (older runs, including Run #15, show from "manager"). Neither proves a human sent it; see the F2 review.
 ```
 
 **PASS:** no delegation before approval; autonomous execution after it; `approvedVia` recorded as the UI.
