@@ -3,14 +3,9 @@
 import { z } from "zod";
 import { SLP_ROLES, type SlpRole } from "../../shared/roles";
 import {
-  BriefItemInputSchema,
-  BriefItemStatusSchema,
-} from "../../shared/board";
-import {
   DelegationSubmissionSchema,
   PipelineBriefSchema,
   PipelineEnvelopeSchema,
-  ScorecardEntrySchema,
   StageReportSubmissionSchema,
 } from "../../shared/pipeline";
 
@@ -51,9 +46,9 @@ export const BUS_TOOL_DEFINITIONS = {
   },
   // One-way: queued for the recipient, nothing waits on it. Use slp_ask when the answer is needed to proceed.
   slp_notify: {
-    // Leads can notify sibling Leads (cross-feature API/flow alignment) or stage Peers; Peers can notify their Lead or sibling stage Peers.
-    roles: ["master_lead", "qa_lead", "peer"],
-    description: "Send a one-way notification (no reply expected, does not block). Leads reach sibling Leads and their stage peers; peers reach only their Lead. Use slp_ask if you need an answer.",
+    // The Supervisor uses this to forward a spec change to a Lead. Leads reach sibling Leads and stage peers; peers reach only their Lead.
+    roles: ["supervisor", "master_lead", "qa_lead", "peer"],
+    description: "Send a one-way notification (no reply expected, does not block). The Supervisor reaches feature Leads and the QA Lead. Leads reach sibling Leads and their stage peers; peers reach only their Lead. Use slp_ask if you need an answer.",
     input: z.object({
       toAgentId: z.string().trim().min(1),
       message: z.string().trim().min(1),
@@ -186,67 +181,14 @@ export const BUS_TOOL_DEFINITIONS = {
       guidance: z.string().trim().min(1),
     }),
   },
-  // Jira-like project Kanban board tools for reading and updating Spec -> Brief -> Score -> Rework.
-  slp_board_list_tickets: {
-    roles: SLP_ROLES,
-    description: "List project Kanban tickets (Spec -> Brief -> Score -> Rework), revision numbers, and active agents.",
-    input: z.object({}),
-  },
-  slp_board_get_ticket: {
-    roles: SLP_ROLES,
-    description: "Read a Kanban ticket's current Spec, Spec diff, Brief bullet items, Brief diff, QA scores, and rework items.",
-    input: z.object({
-      ticketId: z.string().trim().min(1).optional().describe("Ticket key (e.g. SLP-1) or id; defaults to caller's ticket"),
-    }),
-  },
-  slp_board_save_spec: {
-    roles: ["supervisor"],
-    // Explicitly cover both initial drafts and revisions so the Supervisor saves Specs to Kanban before human approval.
-    description: "Create or update a Product Spec (initial draft or revision) on a project Kanban ticket (e.g. SLP-1), recording a Spec revision and Git-style diff. Always call this when drafting or updating a Product Spec for the human instead of only pasting the spec in chat.",
-    input: z.object({
-      ticketId: z.string().trim().min(1).optional(),
-      title: z.string().trim().min(1).optional(),
-      acceptanceCriteria: z.string().trim().min(1).optional(),
-      spec: z.string().trim().min(1),
-      summary: z.string().trim().min(1).optional(),
-    }),
-  },
-  slp_board_notify_lead: {
-    roles: ["supervisor"],
-    description: "Notify the active Lead about a Spec revision and diff so the Lead can pause its peers and update the Brief.",
-    input: z.object({
-      ticketId: z.string().trim().min(1).optional(),
-      toAgentId: z.string().trim().min(1).optional(),
-      message: z.string().trim().min(1),
-    }),
-  },
-  slp_board_update_brief: {
+  // The only way to change a brief after it is locked. Writes the pipeline brief the peers and QA graders follow.
+  slp_revise_brief: {
     roles: ["master_lead", "qa_lead"],
-    description: "Create or update a ticket's Brief bullet items (for example from a Spec diff or when switching technical approaches after an implementation/merge conflict). Records a new Brief revision and diff.",
+    description: "Replace the locked brief of a pipeline you own. Use it after slp_pause_peers when the spec changed or the technical approach must switch, then call slp_resume_peers.",
     input: z.object({
-      ticketId: z.string().trim().min(1).optional(),
       pipelineId: pipelineIdField.optional(),
-      reason: z.string().trim().min(1).describe("Why the Brief is being created or changed (e.g. conflict resolution or Spec diff)"),
-      approach: z.string().trim().min(1),
-      items: z.array(BriefItemInputSchema).min(1),
-    }),
-  },
-  slp_board_update_item: {
-    roles: ["master_lead", "qa_lead", "peer"],
-    description: "Update the implementation status and notes of a specific Brief bullet item on the Kanban ticket.",
-    input: z.object({
-      ticketId: z.string().trim().min(1).optional(),
-      itemId: z.string().trim().min(1),
-      status: BriefItemStatusSchema,
-      note: z.string().trim().min(1).optional(),
-    }),
-  },
-  slp_board_score_item: {
-    roles: ["master_lead", "qa_lead", "peer"],
-    description: "Record QA pass/fail/blocked scores and evidence for Brief bullet items on the Kanban ticket.",
-    input: z.object({
-      ticketId: z.string().trim().min(1).optional(),
-      scorecard: z.array(ScorecardEntrySchema).min(1),
+      reason: z.string().trim().min(1),
+      brief: PipelineBriefSchema,
     }),
   },
 } as const satisfies Record<string, { roles: readonly SlpRole[]; description: string; input: z.ZodType }>;

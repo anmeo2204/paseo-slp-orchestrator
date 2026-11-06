@@ -64,7 +64,7 @@ flowchart TD
 
 | Vai trò runtime | Số lượng | Quyền ghi | Trách nhiệm |
 | :--- | :--- | :--- | :--- |
-| **`supervisor`** | 1 / Run | Chỉ đọc | Đầu mối duy nhất với người dùng. Soạn Product Spec, lưu lên Kanban (`slp_board_save_spec`), xin bạn duyệt, rồi `slp_delegate`. Nhận báo cáo của QA Lead, tự kiểm tra, rồi `slp_present_to_manager` hoặc `slp_request_rework`. Chuyển quyết định của bạn cho Lead khi Stage hết số vòng rework (`slp_relay_decision`). |
+| **`supervisor`** | 1 / Run | Chỉ đọc | Đầu mối duy nhất với người dùng. Soạn Product Spec trong chat, xin bạn duyệt, rồi `slp_delegate`. Nhận báo cáo của QA Lead, tự kiểm tra, rồi `slp_present_to_manager` hoặc `slp_request_rework`. Chuyển quyết định của bạn cho Lead khi Stage hết số vòng rework (`slp_relay_decision`). |
 | **`master_lead`** (Lead) | 1 / feature | Được ghi trong worktree của mình, nhưng prompt mặc định yêu cầu không tự viết code | Mỗi feature có một Lead trong worktree riêng. Lead định nghĩa pipeline `[planning]? -> implement`, chính Lead điều phối mọi Stage (không có agent điều phối riêng cho từng Stage), duyệt hoặc yêu cầu làm lại, rồi `slp_finalize_pipeline` để engine merge nhánh feature vào nhánh QA. Lead feature **không** gọi `slp_report`. |
 | **`qa_lead`** | 1 / chu kỳ delegate | Chỉ đọc (engine từ chối mọi lệnh ghi) | Được tạo cùng lúc với các Lead. Pha 1: đọc `.slp/standards/TEST_POLICY.md`, lập kế hoạch kiểm thử, hỏi các Lead qua `slp_ask`. Pha 2: khi nhánh feature cuối cùng đã merge, engine bàn giao. QA Lead định nghĩa pipeline QA gồm các Stage `verify`, đọc scorecard, gửi lỗi cho developer sửa, đóng pipeline (`slp_finalize_pipeline`, không merge), rồi là vai trò **duy nhất** được gọi `slp_report`. |
 | **`peer`** | 1..N / Stage | Chỉ `kind: developer` được ghi | Thực thi theo `.slp/peers/<ROLE>.md`. `kind` quyết định Stage mà peer được tham gia: `advisor` (chỉ Stage planning, chỉ đọc), `developer` (người ghi code duy nhất của Stage), `qa` (chấm scorecard, chỉ đọc, chỉ trong pipeline QA). Peer **chỉ** liên lạc với Lead của mình. |
@@ -84,7 +84,7 @@ flowchart TD
 
 ### 2.3. Nghĩa vụ tool (`awaitingTool`) & nhắc nhở
 - Khi giao việc, engine ghi tool mà agent phải gọi để kết thúc việc đó. Ví dụ: Lead nợ `slp_define_pipeline`, Peer nợ `slp_stage_report`, Lead nợ `slp_approve_stage` khi đã đủ báo cáo, Supervisor nợ `slp_present_to_manager`.
-- Tool chỉ đọc (`slp_get_run`, `slp_list_pipelines`, `slp_get_pipeline`, `slp_board_list_tickets`, `slp_board_get_ticket`) không xóa nghĩa vụ.
+- Tool chỉ đọc (`slp_get_run`, `slp_list_pipelines`, `slp_get_pipeline`) không xóa nghĩa vụ.
 - Nếu agent kết thúc lượt mà chưa gọi tool đang nợ, hook `agent.turn_ended` và **Sweeper** (chạy mỗi 3 giây) gửi lời nhắc, tối đa `NUDGE_LIMIT = 2` lần.
 
 ### 2.4. Biên giới ghi file (`server/hooks/permissions.ts`)
@@ -111,7 +111,7 @@ sequenceDiagram
     participant QA as QA Lead
 
     User->>Sup: Start run, mô tả yêu cầu
-    Sup->>Sup: slp_board_save_spec (Product Spec lên Kanban)
+    Sup->>Sup: Soạn Product Spec trong chat
     Sup->>User: Trình bày Spec, chờ duyệt
     User->>Sup: Duyệt
     Sup->>L: slp_delegate({ acceptanceCriteria, productSpec } | { tasks })
@@ -149,9 +149,9 @@ sequenceDiagram
    - Chỉ **Supervisor** được tạo, trong checkout chính của repo. Chưa có Lead, chưa có worktree nào. Paseo mở khung chat của Supervisor.
 
 2. **Product Spec & delegate (`delegating → planning`)**
-   - Supervisor đọc repo (chỉ đọc), soạn Product Spec 5 phần: màn hình/bề mặt, trạng thái, kịch bản Given/When/Then, quy tắc nghiệp vụ, ngoài phạm vi. Mỗi bản nháp hoặc bản sửa được lưu lên Kanban bằng `slp_board_save_spec`.
+   - Supervisor đọc repo (chỉ đọc), soạn Product Spec 5 phần trong chat: màn hình/bề mặt, trạng thái, kịch bản Given/When/Then, quy tắc nghiệp vụ, ngoài phạm vi.
    - Khi bạn duyệt, Supervisor gọi `slp_delegate`, dạng một feature `{ acceptanceCriteria, productSpec }` hoặc nhiều feature song song `{ tasks: [{ name, acceptanceCriteria, productSpec }], sharedContext? }`. Engine bắt buộc mỗi feature có `productSpec` dài ít nhất 80 ký tự.
-   - Engine tạo **QA worktree** (nhánh `qa-cycle-N`). Nhánh này trở thành `integrationBranch` của Run. Sau đó engine tạo **mỗi feature một Lead** trong worktree riêng, tách từ nhánh QA, và tạo **QA Lead** trong QA worktree. Mỗi Lead nhận danh sách Lead anh em và QA Lead. Mỗi feature trở thành một ticket Kanban.
+   - Engine tạo **QA worktree** (nhánh `qa-cycle-N`). Nhánh này trở thành `integrationBranch` của Run. Sau đó engine tạo **mỗi feature một Lead** trong worktree riêng, tách từ nhánh QA, và tạo **QA Lead** trong QA worktree. Mỗi Lead nhận danh sách Lead anh em và QA Lead.
 
 3. **Lead định nghĩa pipeline (`planning → running`)**
    - Lead đọc Product Spec, khảo sát worktree, rồi gọi `slp_define_pipeline`. Nếu không truyền `worktree`, pipeline dùng worktree đã cấp sẵn cho Lead.
@@ -169,7 +169,7 @@ sequenceDiagram
    - `slp_approve_stage({ summary, brief? })`: duyệt Stage. Duyệt Stage planning bắt buộc kèm `brief`. Advisor bị archive khi Stage planning đóng.
    - `slp_stage_rework({ agentIds?, feedback })`: yêu cầu làm lại. Mỗi Stage có giới hạn số vòng (mặc định 3).
    - `slp_escalate({ reason })`: tạm dừng pipeline (`paused`) và báo Supervisor. Nếu Stage đã hết số vòng rework, pipeline chờ quyết định của bạn (`awaitingHumanDecision`): Supervisor trình bày scorecard và chuyển câu trả lời bằng `slp_relay_decision`. Nếu chưa hết vòng, Lead tự tiếp tục bằng `slp_resume_pipeline`.
-   - Khi phải đổi hướng kỹ thuật hoặc Supervisor báo Spec đã đổi: `slp_pause_peers` → `slp_board_update_brief` → `slp_resume_peers`.
+   - Khi phải đổi hướng kỹ thuật hoặc Supervisor báo Spec đã đổi (`slp_notify`): `slp_pause_peers` → `slp_revise_brief` → `slp_resume_peers`.
 
 7. **Merge vào nhánh QA**
    - Khi Stage cuối được duyệt, Lead nợ `slp_finalize_pipeline`. Engine kiểm tra worktree sạch, chạy `git merge --no-ff` nhánh pipeline vào nhánh QA, xác minh commit đã merge, archive các Peer, rồi xóa worktree và nhánh `slp/*` tạm. Nếu conflict, engine hủy merge và trả về danh sách file conflict cùng các agent nên hỏi.
@@ -181,8 +181,8 @@ sequenceDiagram
    - Sau Stage cuối: `slp_finalize_pipeline` đóng pipeline QA (không merge), rồi `slp_report`. Engine chỉ chấp nhận `slp_report` khi đã có một pipeline QA đóng **sau** lần merge feature cuối cùng.
 
 9. **Nghiệm thu (`reporting → awaiting_user → completed`)**
-   - Supervisor tự kiểm tra (đọc pipeline, Kanban, `git diff`).
-   - `slp_present_to_manager({ report })`: engine **tự merge** nhánh QA vào `baseBranch`, archive mọi agent con và worktree, chuyển ticket Kanban sang `done`, Run sang `completed`. Nếu merge bị chặn (ví dụ checkout chính không sạch), Run mở cổng `final_approval`. Bạn dọn checkout rồi bấm **Approve -> main**.
+   - Supervisor tự kiểm tra (đọc pipeline và `git diff`).
+   - `slp_present_to_manager({ report })`: engine **tự merge** nhánh QA vào `baseBranch`, archive mọi agent con và worktree, Run sang `completed`. Nếu merge bị chặn (ví dụ checkout chính không sạch), Run mở cổng `final_approval`. Bạn dọn checkout rồi bấm **Approve -> main**.
    - `slp_request_rework({ feedback })`: yêu cầu quay về QA Lead, QA Lead mở pipeline QA mới để sửa và kiểm tra lại. Nếu Run đã `completed`, yêu cầu này bắt đầu một **chu kỳ delegate mới** với Lead mới và QA Lead mới.
 
 ---
@@ -192,7 +192,7 @@ sequenceDiagram
 | Luồng | Tool | Ghi chú |
 | :--- | :--- | :--- |
 | Người dùng ↔ Supervisor | Chat trên Paseo, nút trong SLP Orchestrator | Chỉ Supervisor nói chuyện với bạn. |
-| Supervisor → Lead | `slp_delegate`, `slp_board_notify_lead`, `slp_relay_decision` | `slp_board_notify_lead` báo cho Lead đang chạy rằng Spec đã đổi (kèm diff). |
+| Supervisor → Lead | `slp_delegate`, `slp_notify`, `slp_relay_decision` | `slp_notify` báo cho Lead đang chạy rằng Spec đã đổi. |
 | Supervisor → QA Lead | `slp_request_rework` | Rework luôn đi tới QA Lead (hoặc mở chu kỳ mới nếu Run đã xong). |
 | QA Lead → Supervisor | `slp_report` | Chỉ QA Lead hiện tại của Run được gọi. |
 | Lead ↔ Lead anh em, Lead ↔ QA Lead | `slp_ask`, `slp_answer`, `slp_notify` | Thống nhất API, schema, route dùng chung. |
@@ -232,10 +232,9 @@ Engine kiểm tra các quy tắc sau trong `server/pipeline/stage-shape.ts`, tr�
 4. **Scorecard QA:** Peer `qa` bắt buộc nộp `scorecard: [{ criterionId, status: pass|fail|blocked, reason, evidence }]`, kèm `observations` cho những gì ngoài tiêu chí (không chấm điểm). Developer trong Stage verify chỉ nhận việc khi Lead yêu cầu sửa.
 5. **Giới hạn rework** (mặc định 3 vòng/Stage): hết số vòng thì `slp_stage_rework` bị từ chối. Lead phải duyệt hoặc `slp_escalate` để bạn quyết định qua Supervisor. `slp_relay_decision` đặt lại bộ đếm.
 
-### 4.3. Kanban Spec → Brief → Score → Rework
-- Ticket gắn theo **dự án** (bảng `board_tickets`), không theo Run, nên Spec và Brief còn lại qua nhiều Run. Các cột: `spec`, `brief`, `score`, `rework`, `done`.
-- Supervisor ghi Spec (`slp_board_save_spec`). Lead ghi Brief (`slp_board_update_brief`). Developer cập nhật tiến độ từng mục (`slp_board_update_item`). QA chấm điểm qua `slp_stage_report` hoặc `slp_board_score_item`. Mỗi lần sửa Spec hoặc Brief đều lưu revision kèm diff.
-- Xem trên panel **Spec & Brief Kanban** (lệnh `Open Project Spec & Brief Kanban`).
+### 4.3. Sửa brief sau khi đã khóa
+- Spec sống trong chat và trong `productSpec` của run. Brief sống trong pipeline.
+- Brief đã khóa chỉ đổi bằng `slp_revise_brief`. Lead dừng peer (`slp_pause_peers`), thay brief, rồi `slp_resume_peers`. Scorecard vẫn nằm trong `slp_stage_report`.
 
 ---
 
@@ -406,7 +405,7 @@ Có thể gửi nhiều pipeline một lúc bằng `{ "pipelines": [ ... ] }`.
 - Dùng `node:sqlite` (Node.js 24+), chế độ `WAL`. Các bảng:
   - `runs`: toàn bộ trạng thái Run (provider, snapshot `.slp/`, pipeline, agent, mailbox).
   - `questions`: sổ hỏi đáp `slp_ask`/`slp_answer`.
-  - `board_tickets`: ticket Kanban theo dự án.
+  - `board_tickets`: bảng cũ của Kanban nội bộ, engine không còn đọc.
   - `comm_logs`: nhật ký mọi lời gọi tool và tin nhắn (`delivered`, `queued`, `blocked`, `error`, `info`), hiển thị trên panel **SLP Monitor**.
   - `tasks`, `task_reports`: dữ liệu của engine task cũ, chỉ để xem lại.
   - `migrations`: các lần import dữ liệu cũ (`state.json`).
@@ -460,9 +459,8 @@ Nguồn: `server/bus/tool-schemas.ts` (`BUS_TOOL_DEFINITIONS`). Mỗi agent ch�
 
 | Tool | Tham số | Công dụng |
 | :--- | :--- | :--- |
-| `slp_board_save_spec` | `{ ticketId?, title?, acceptanceCriteria?, spec, summary? }` | Tạo hoặc sửa Product Spec trên Kanban, lưu revision và diff. |
 | `slp_delegate` | `{ acceptanceCriteria, productSpec }` hoặc `{ tasks: [{ name, acceptanceCriteria, productSpec, worktree? }], sharedContext? }` | Tạo QA worktree, QA Lead và một Lead cho mỗi feature. `productSpec` ≥ 80 ký tự cho mỗi feature. |
-| `slp_board_notify_lead` | `{ ticketId?, toAgentId?, message }` | Báo Lead đang chạy rằng Spec đã đổi. |
+| `slp_notify` | `{ toAgentId, message }` | Báo Lead đang chạy rằng Spec đã đổi. Không chờ trả lời. |
 | `slp_relay_decision` | `{ pipelineId, decision }` | Chuyển quyết định của bạn cho pipeline đã hết số vòng rework, đặt lại bộ đếm. |
 | `slp_request_rework` | `{ feedback }` | Trả kết quả về QA Lead (hoặc mở chu kỳ delegate mới nếu Run đã `completed`). |
 | `slp_present_to_manager` | `{ report }` | Nghiệm thu và tự merge nhánh QA vào `baseBranch`. Nếu merge bị chặn thì mở cổng `final_approval`. |
@@ -478,8 +476,8 @@ Nguồn: `server/bus/tool-schemas.ts` (`BUS_TOOL_DEFINITIONS`). Mỗi agent ch�
 | `slp_escalate` | Cả hai | `{ reason }` | Tạm dừng pipeline và báo Supervisor. |
 | `slp_resume_pipeline` | Cả hai | `{ pipelineId, feedback }` | Tiếp tục pipeline đang `paused`. Không dùng được khi đang chờ quyết định của bạn. |
 | `slp_pause_peers` | Cả hai | `{ pipelineId?, peerAgentIds?, reason }` | Ngắt lượt đang chạy của Peer và khóa quyền ghi. |
-| `slp_resume_peers` | Cả hai | `{ pipelineId?, peerAgentIds?, guidance }` | Mở lại Peer kèm hướng dẫn và diff của Brief. |
-| `slp_board_update_brief` | Cả hai | `{ ticketId?, pipelineId?, reason, approach, items }` | Tạo hoặc sửa Brief trên Kanban, lưu revision và diff. |
+| `slp_resume_peers` | Cả hai | `{ pipelineId?, peerAgentIds?, guidance }` | Mở lại Peer kèm hướng dẫn và brief hiện tại. |
+| `slp_revise_brief` | Cả hai | `{ pipelineId?, reason, brief }` | Thay brief đã khóa. Gọi sau `slp_pause_peers`, trước `slp_resume_peers`. |
 | `slp_handle_peer_shell` | Cả hai | `{ peerAgentId, action: "cancel" \| "wait", guidance?, waitSeconds? }` | Xử lý cảnh báo của shell watchdog. |
 | `slp_finalize_pipeline` | Cả hai | `{ pipelineId?, summary }` | Lead: merge nhánh feature vào nhánh QA. QA Lead: đóng pipeline QA, không merge. |
 | `slp_report` | QA Lead | `{ summary }` | Gửi kết quả đã xác minh cho Supervisor. |
@@ -491,21 +489,21 @@ Nguồn: `server/bus/tool-schemas.ts` (`BUS_TOOL_DEFINITIONS`). Mỗi agent ch�
 | :--- | :--- | :--- |
 | `slp_stage_report` | `{ summary, findings?, status?: "completed" \| "blocked", scorecard?, observations? }` | Nộp kết quả. Peer `qa` bắt buộc có `scorecard`. |
 | `slp_escalate` | `{ reason }` | Với Peer, tương đương nộp báo cáo `blocked`, đánh thức Lead ngay. |
-| `slp_board_update_item` | `{ ticketId?, itemId, status, note? }` | Cập nhật tiến độ một mục Brief (cả Lead dùng được). |
-| `slp_board_score_item` | `{ ticketId?, scorecard }` | Ghi điểm pass/fail/blocked cho các mục Brief (cả Lead dùng được). |
 
-### 7.4. Hỏi đáp (Lead, QA Lead, Peer)
+### 7.4. Hỏi đáp
+
+Supervisor chỉ có `slp_notify` (mục 7.1). `slp_ask` thuộc Lead, QA Lead và Peer.
 
 | Tool | Tham số | Công dụng |
 | :--- | :--- | :--- |
 | `slp_ask` | `{ toAgentId, question }` | Câu hỏi chặn, chờ tối đa ~40 giây mỗi lời gọi. Lead hỏi Lead anh em và Peer của mình. Peer chỉ hỏi Lead. |
 | `slp_await_answer` | `{ questionId }` | Chờ tiếp câu trả lời, đồng thời nhận câu hỏi gửi tới mình. |
 | `slp_answer` | `{ questionId, answer }` | Trả lời câu hỏi gửi tới mình. |
-| `slp_notify` | `{ toAgentId, message }` | Thông báo một chiều, cùng phạm vi người nhận như `slp_ask`. |
+| `slp_notify` | `{ toAgentId, message }` | Thông báo một chiều. Lead và Peer dùng cùng phạm vi người nhận như `slp_ask`. Supervisor dùng tool này để báo Lead. |
 
 ### 7.5. Tool chỉ đọc (mọi vai trò)
 
-`slp_get_run`, `slp_list_pipelines`, `slp_get_pipeline`, `slp_board_list_tickets`, `slp_board_get_ticket`. Các tool này không kết thúc lượt và không xóa nghĩa vụ.
+`slp_get_run`, `slp_list_pipelines`, `slp_get_pipeline`. Các tool này không kết thúc lượt và không xóa nghĩa vụ.
 
 ---
 
@@ -533,7 +531,7 @@ Paseo `>= 0.11.1` (theo `paseo-plugin.json`), daemon chạy Node.js 24+ (có `no
 3. Tab **Settings**: chọn Model / Thinking / Permission cho Supervisor, Lead, Peer.
 4. Tab **SLP**: chọn repo, đặt Name, bấm **Start run**. Paseo mở khung chat của Supervisor.
 5. Mô tả yêu cầu, duyệt Product Spec mà Supervisor đưa ra.
-6. Theo dõi trên panel **SLP Monitor** (`Open SLP Live Tool-Call Monitor`) và **Spec & Brief Kanban** (`Open Project Spec & Brief Kanban`), hoặc tab History.
+6. Theo dõi trên panel **SLP Monitor** (`Open SLP Live Tool-Call Monitor`), hoặc tab History.
 
 ### 9.3. Lệnh trong `tools/bin/`
 

@@ -1,6 +1,7 @@
 // Approval is the Lead's decision; engine state only coordinates closure and subsequent stages.
 import type { BusCaller } from "../bus/http-mcp";
 import type { PipelineBrief } from "../../shared/pipeline";
+import { isPipelineLeadRole } from "../../shared/roles";
 import type { PipelineContext } from "./context";
 import { pipelineFinalizationBriefing } from "./stage-briefings";
 import { requirePipeline, requireStageLead } from "./stage-context";
@@ -25,9 +26,9 @@ export function approveStage(
   if (stage.kind === "planning" && !brief && !pipeline.brief) {
     throw new ToolError("Approving the planning stage requires brief: { approach, criteria: [{ id, requirement, verification }], inScope, outOfScope }. It becomes the contract for the next stages.");
   }
-  // Keep stage approval from silently overwriting an already locked brief; intentional technical pivots go through slp_board_update_brief with an explicit reason and diff.
+  // A locked brief changes only through slp_revise_brief, which records why the contract moved.
   if (brief && pipeline.briefLockedAt) {
-    throw new ToolError("The pipeline brief is already locked for this pipeline; use slp_board_update_brief to revise the Brief with a reason and diff.");
+    throw new ToolError("The pipeline brief is already locked for this pipeline; use slp_revise_brief to replace it with a reason.");
   }
   const approvedAt = new Date().toISOString();
   ctx.store.mutate(run.id, () => {
@@ -37,17 +38,6 @@ export function approveStage(
     if (brief) {
       pipeline.brief = brief;
       pipeline.briefLockedAt = approvedAt;
-      ctx.store.board.syncPipelineBriefToTicket({
-        repoPath: run.repoPath,
-        runId: run.id,
-        pipelineId: pipeline.id,
-        pipelineName: pipeline.name,
-        leadAgentId: caller.agentId,
-        brief,
-        reason: `Approved stage '${stage.name}': ${summary}`,
-        fallbackCriteria: run.criteria ?? "",
-        fallbackSpec: run.productSpec,
-      });
     }
     pipeline.updatedAt = approvedAt;
     run.agents[caller.agentId].awaitingTool = null;
@@ -55,6 +45,42 @@ export function approveStage(
   ctx.logEvent(run.id, { taskId: null, from: caller.agentId, to: "pipeline", kind: "stage.approved", summary: `${pipeline.name}/${stage.name}: ${summary}`, outcome: "delivered" });
   scheduleRecovery(ctx, run.id);
   return "Stage approval saved. End your turn. The engine hands accepted results to the next stage (or assigns slp_finalize_pipeline to merge the completed pipeline branch).";
+}
+
+// Replaces a locked brief in the pipeline record the peers and QA graders read. Does not end the Lead's turn.
+export function reviseBrief(
+  ctx: PipelineContext,
+  caller: BusCaller,
+  input: { pipelineId?: string; reason: string; brief: PipelineBrief },
+): string {
+  const run = ctx.store.require(caller.runId);
+  if (!isPipelineLeadRole(caller.role)) throw new ToolError("Only a Lead can revise a brief.");
+  const callerRecord = run.agents[caller.agentId];
+  const pipelineId = input.pipelineId?.trim()
+    || callerRecord?.pipelineId
+    || Object.values(run.pipelines).find((candidatePipeline) => candidatePipeline.leadAgentId === caller.agentId)?.id;
+  if (!pipelineId) throw new ToolError("Specify pipelineId. This Lead has no pipeline yet.");
+  const pipeline = requirePipeline(run, pipelineId);
+  const ownsPipeline = pipeline.leadAgentId === caller.agentId
+    || caller.agentId === run.masterLeadAgentId
+    || pipeline.stages.some((candidateStage) => candidateStage.forkedLeadAgentId === caller.agentId);
+  if (!ownsPipeline) throw new ToolError(`Lead '${caller.agentId}' does not own pipeline '${pipeline.name}'.`);
+  const revisedAt = new Date().toISOString();
+  ctx.store.mutate(run.id, (mutableRun) => {
+    const mutablePipeline = requirePipeline(mutableRun, pipelineId);
+    mutablePipeline.brief = input.brief;
+    mutablePipeline.briefLockedAt = revisedAt;
+    mutablePipeline.updatedAt = revisedAt;
+  });
+  ctx.logEvent(run.id, {
+    taskId: pipelineId,
+    from: caller.agentId,
+    to: "pipeline",
+    kind: "brief.revised",
+    summary: `${pipeline.name}: ${input.reason}`,
+    outcome: "delivered",
+  });
+  return `Brief revised (${input.reason}). If stage peers are paused, call slp_resume_peers so they receive this brief.`;
 }
 
 export function resumePipeline(

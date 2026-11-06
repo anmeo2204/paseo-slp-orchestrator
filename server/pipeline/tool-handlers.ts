@@ -10,7 +10,7 @@ import { finalizePipeline } from "./finalize-pipeline";
 import { createPipelineWorktree } from "./pipeline-workspaces";
 import { delegate, presentToManager, report, requestRework } from "./run-lifecycle";
 import { listPipelines, readPipeline, readRun } from "./read-tools";
-import { approveStage, relayHumanDecision, resumePipeline } from "./stage-control";
+import { approveStage, relayHumanDecision, resumePipeline, reviseBrief } from "./stage-control";
 import { answerQuestion } from "./peer-messaging/answer-question";
 import { askQuestion } from "./peer-messaging/ask-question";
 import { awaitAnswer } from "./peer-messaging/await-answer";
@@ -18,15 +18,6 @@ import { notifyAgent } from "./peer-messaging/notify";
 import { escalateStage, requestStageRework, submitStageReport } from "./stage-messages";
 import { handlePeerShell } from "./shell-watchdog";
 import { pauseStagePeers, resumeStagePeers } from "./peer-pause";
-import {
-  getBoardTicket,
-  listBoardTickets,
-  notifyLeadAboutSpec,
-  saveBoardSpec,
-  scoreBoardBriefItems,
-  updateBoardBrief,
-  updateBoardBriefItem,
-} from "./board-tools";
 import { ToolError } from "./tool-error";
 
 type ToolInput<Name extends BusToolName> = z.output<(typeof BUS_TOOL_DEFINITIONS)[Name]["input"]>;
@@ -64,13 +55,7 @@ const TOOL_HANDLERS: { [Name in BusToolName]: ToolHandler<Name> } = {
   slp_get_run: (ctx, caller) => readRun(ctx, caller),
   slp_pause_peers: (ctx, caller, input) => pauseStagePeers(ctx, caller, input),
   slp_resume_peers: (ctx, caller, input) => resumeStagePeers(ctx, caller, input),
-  slp_board_list_tickets: (ctx, caller) => listBoardTickets(ctx, caller),
-  slp_board_get_ticket: (ctx, caller, input) => getBoardTicket(ctx, caller, input),
-  slp_board_save_spec: (ctx, caller, input) => saveBoardSpec(ctx, caller, input),
-  slp_board_notify_lead: (ctx, caller, input) => notifyLeadAboutSpec(ctx, caller, input),
-  slp_board_update_brief: (ctx, caller, input) => updateBoardBrief(ctx, caller, input),
-  slp_board_update_item: (ctx, caller, input) => updateBoardBriefItem(ctx, caller, input),
-  slp_board_score_item: (ctx, caller, input) => scoreBoardBriefItems(ctx, caller, input),
+  slp_revise_brief: (ctx, caller, input) => reviseBrief(ctx, caller, input),
 };
 
 export function createBusDispatcher(ctx: PipelineContext): BusTransportDeps {

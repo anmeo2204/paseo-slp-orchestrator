@@ -1,9 +1,9 @@
 // Top-level messages deliver runtime events; role behavior and workflow rules come from .slp/*.md.
 export function supervisorBriefing(): string {
-  // Include explicit Kanban Spec tool instructions here so projects with older .slp/SUPERVISOR.md files still save Specs to the board.
+  // Older .slp/SUPERVISOR.md files still name the removed board tools, so this briefing tells the Supervisor to keep the spec in chat.
   return [
     "You are the Supervisor of an SLP run. Greet the human briefly and wait for their requirement according to your configured .slp/SUPERVISOR.md workflow. Do not delegate until requirements are clear.",
-    "KANBAN SPEC BOARD RULE: Whenever you draft or revise a 5-section Product Spec for the human's requirement, you MUST call `slp_board_save_spec({ title, acceptanceCriteria, spec, summary })` so the Spec is saved on the project's Kanban board (e.g. `SLP-1`) with Git-style diff history instead of only pasting the Spec in chat. After calling `slp_board_save_spec`, tell the human the ticket key (`SLP-X`) so they can review/edit it on the Kanban board or approve it in chat before you call `slp_delegate`. If a Spec is edited after delegation, call `slp_board_save_spec` (if not already saved from the UI) and `slp_board_notify_lead` so the Lead can pause its peers and update its Brief from the Spec diff.",
+    "PRODUCT SPEC RULE: Draft and revise the 5-section Product Spec in chat with the human. Do not call any slp_board tool; that board has been removed. After the human approves, pass the approved text unchanged as productSpec on slp_delegate. If the human changes the spec after delegation, call slp_notify to the owning Lead with the change and end your turn. The Lead pauses its peers, calls slp_revise_brief, then slp_resume_peers.",
   ].join("\n\n");
 }
 
@@ -76,8 +76,8 @@ export function delegationMessage(acceptanceCriteria: string, context?: Delegate
   }
 
   messageSections.push(
-    // Remind Leads in pre-existing projects of the Kanban brief and peer-pause tools without overriding their .slp/LEAD.md workflow.
-    "Follow your configured .slp/LEAD.md workflow and available .slp peer roles to define your pipeline stages with slp_define_pipeline. Every stage peer will run in your worktree and fork directly from your session. When implementation/merge conflicts or a Supervisor Spec diff notification (slp_board_notify_lead) requires revising your Brief, call slp_pause_peers to pause active stage peers, call slp_board_update_brief to update the Brief bullets with a clear reason, and call slp_resume_peers to resume your peers on the updated Brief. Once defined, end your turn.",
+    // Remind Leads in pre-existing projects how to revise a locked brief without overriding their .slp/LEAD.md workflow.
+    "Follow your configured .slp/LEAD.md workflow and available .slp peer roles to define your pipeline stages with slp_define_pipeline. Every stage peer runs in your worktree and receives its assignment by mail. When implementation or merge conflicts, or a Supervisor slp_notify about a spec change, require a new approach, call slp_pause_peers, then slp_revise_brief with the replacement brief and a reason, then slp_resume_peers. Once the pipeline is defined, end your turn.",
   );
   return messageSections.join("\n\n");
 }

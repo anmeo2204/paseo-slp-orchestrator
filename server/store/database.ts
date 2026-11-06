@@ -46,7 +46,7 @@ const PEER_QUESTIONS_SCHEMA = `
   PRAGMA user_version = 2;
 `;
 
-// Project-scoped Kanban tickets live outside individual runs so Specs and Briefs persist across runs and reworks.
+// Kept so databases created while the in-plugin board existed still open. The engine no longer reads this table.
 const BOARD_TICKETS_SCHEMA = `
   CREATE TABLE IF NOT EXISTS board_tickets (
     ticket_id TEXT PRIMARY KEY,

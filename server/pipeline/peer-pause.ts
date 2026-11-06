@@ -157,9 +157,6 @@ export function resumeStagePeers(
   const targetPeers = selectTargetStagePeers(initialRun, stage, input.peerAgentIds);
   const resumedTimestamp = new Date().toISOString();
   const resumeGuidance = input.guidance.trim();
-  // Include the latest Brief diff in the resume message so peers immediately see what changed in the contract.
-  const linkedBoardTicket = ctx.store.board.findByPipeline(pipeline.id);
-  const latestBriefDiff = linkedBoardTicket?.briefRevisions.at(-1)?.diff ?? "";
 
   ctx.store.mutate(initialRun.id, (mutableRun) => {
     const mutablePipeline = requirePipeline(mutableRun, pipeline.id);
@@ -180,10 +177,6 @@ export function resumeStagePeers(
       const resumeMailSections = [
         `## Work Resumed by Lead (\`${caller.agentId}\`) — Stage '${stage.name}'`,
         `### Lead Guidance\n${resumeGuidance}`,
-        linkedBoardTicket
-          ? `### Kanban Ticket \`${linkedBoardTicket.ticketKey}\` (Spec v${linkedBoardTicket.currentSpecRev} · Brief v${linkedBoardTicket.currentBriefRev})\nCall \`slp_board_get_ticket({ ticketId: "${linkedBoardTicket.ticketKey}" })\` to inspect all brief bullets.`
-          : "",
-        latestBriefDiff ? `### Latest Brief Diff\n\`\`\`diff\n${latestBriefDiff}\n\`\`\`` : "",
         mutablePipeline.brief ? `### Current Brief\n${formatBrief(mutablePipeline.brief)}` : "",
         "Continue your work according to the updated Brief and submit your results with `slp_stage_report`.",
       ].filter(Boolean);

@@ -4,7 +4,7 @@
 
 > [!IMPORTANT]
 > **Mandatory Requirement for Every Mechanism or Tool Change:**
-> Whenever you add, modify, or remove any SLP orchestration mechanism, pipeline stage rule, Kanban board workflow (`SPEC -> BRIEF -> SCORE -> REWORK`), peer lifecycle rule, or MCP bus tool (`slp_*` in `server/bus/tool-schemas.ts`), you **MUST** inspect and update the `initSkill` (`slp-manager`) skill content in the **same change** so provisioned project skills never drift behind the runtime engine.
+> Whenever you add, modify, or remove any SLP orchestration mechanism, pipeline stage rule, brief revision rule, peer lifecycle rule, or MCP bus tool (`slp_*` in `server/bus/tool-schemas.ts`), you **MUST** inspect and update the `initSkill` (`slp-manager`) skill content in the **same change** so provisioned project skills never drift behind the runtime engine.
 
 ### Required Lockstep Checklist Before Completing Any Mechanism Change
 
@@ -14,7 +14,7 @@
    - Update `DEFAULT_WORKFLOWS` (`supervisor`, `master_lead`, `qa_lead`, `peer`) and seeded `.slp/` templates so newly initialized repositories receive instructions and turn-ending rules that match the current engine contract.
 3. **`initSkill` Skill Generator (`server/skills/slp-manager/*`)**:
    - Audit and update `server/skills/slp-manager/skill-markdown.ts` (`renderSlpManagerSkillMarkdown`) — including:
-     - **Section 1**: 3-Tier SLP Architecture (`Supervisor`, `Lead`, `QA Lead`, `Stage Peers`), Kanban board lifecycle, and run settings.
+     - **Section 1**: 3-Tier SLP Architecture (`Supervisor`, `Lead`, `QA Lead`, `Stage Peers`), locked briefs, and run settings.
      - **Section 3**: Peer role template and YAML front-matter reference (`role`, `description`, `model`, `thinking`, `kind`, `tier`).
      - **Section 4**: Mandatory checklists for `.slp/SUPERVISOR.md`, `.slp/LEAD.md`, `.slp/QA_LEAD.md`, and `.slp/peers/<group>/*.md` (including exact tool names and turn-ending rules).
      - **Section 6**: Migration checklist for upgrading existing `.slp/` directories to the new mechanism.
@@ -26,12 +26,12 @@
 
 ## 2. Architecture & Key Modules
 
-- **`shared/`**: Shared Zod schemas and TypeScript contracts across daemon and UI (`shared/state.ts`, `shared/pipeline.ts`, `shared/board.ts`, `shared/orchestration.ts`, `shared/rpc.ts`, `shared/roles.ts`).
+- **`shared/`**: Shared Zod schemas and TypeScript contracts across daemon and UI (`shared/state.ts`, `shared/pipeline.ts`, `shared/orchestration.ts`, `shared/rpc.ts`, `shared/roles.ts`).
 - **`server/bus/`**: Loopback HTTP MCP server (`slp-bus`) and role-scoped tool definitions (`server/bus/tool-schemas.ts`).
-- **`server/pipeline/`**: Stage state machine (`stage-engine.ts`), stage reports/rework/escalation (`stage-messages.ts`), Kanban board operations (`board-tools.ts`), Lead peer pause/resume (`peer-pause.ts`), and verification scorecard loop (`verify-loop.ts`).
+- **`server/pipeline/`**: Stage state machine (`stage-engine.ts`), stage reports/rework/escalation (`stage-messages.ts`), brief revision (`stage-control.ts`), Lead peer pause/resume (`peer-pause.ts`), and verification scorecard loop (`verify-loop.ts`).
 - **`server/prompts/` & `server/project-prompts/`**: System prompt assembly (`system-prompts.ts`), default `.slp` role workflows (`default-workflows.ts`), `.slp` Markdown parser (`markdown.ts`), and per-tier provider/model resolution (`agent-settings.ts`).
 - **`server/skills/slp-manager/`**: Source files for the `slp-manager` skill installed into target repositories (`<repoPath>/.agents/skills/slp-manager` and `<repoPath>/.claude/skills/slp-manager`) via `ensureSlpManagerSkill` (`initProjectSkillsRpc`).
-- **`client/`**: Paseo UI screens and components (`run-control-screen.tsx`, `kanban-panel.tsx`, `settings-screen.tsx`, `components/kanban/*`).
+- **`client/`**: Paseo UI screens and components (`run-control-screen.tsx`, `settings-screen.tsx`, `monitor-panel.tsx`).
 
 ---
 
