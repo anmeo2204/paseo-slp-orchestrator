@@ -2,21 +2,34 @@
 
 Manual procedure for validating Phase 1 against a real Paseo installation and real providers. Written for the
 environment inspected on 2026-11-06 (see `PHASE1_LIVE_ACCEPTANCE_REPORT.md` §1) with the plugin running from
-`an_dev` at `aace356`.
+`an_dev` at `aace356`. The test repository was prepared on the same day with the plugin checkout at `cb600ac`
+(docs-only on top of `aace356`, so the loaded plugin code is unchanged).
 
 Steps marked **[MANAGER]** require a human in the Paseo desktop UI and cannot be delegated to an agent.
 Expect 60–90 minutes for the full matrix.
+
+The disposable test repository is already prepared (§2–3) at:
+
+```bash
+export SLP_TEST_REPO=/Volumes/Work/alvenix/projects/slp-live-repo
+```
+
+It is a standalone repository directly inside the shared `projects/` directory, next to real client projects.
+Every command below addresses it through `$SLP_TEST_REPO`; none addresses its parent directory.
 
 ---
 
 ## 0. Safety rules
 
-1. **Use only the disposable repository created in §2.** The live install currently hosts several real client
-   projects; none of them may be used as a test subject.
+1. **Use only the disposable repository at `$SLP_TEST_REPO`.** The live install currently hosts several real client
+   projects, some of them in the same `projects/` directory; none of them may be used as a test subject.
 2. **Never bypass an approval.** If a scenario appears stuck waiting for approval, that is usually a PASS for the
-   gate, not a defect. Record it and continue.
-3. **Run no destructive command outside `$SLP_TEST_ROOT`.** The cleanup in §10 is scoped to the test repo, its
-   `slp/*` branches and the test project; it must never touch other runs or workspaces.
+   gate, not a defect. Record it and continue. In particular, **never call `slp.spec.approve`,
+   `slp.gate.approve`, `slp.pipeline.approve_gate` or `slp.run.approve_main` through `tools/bin/slp-rpc`**: the
+   daemon accepts them from any local client (report §3.2), so only the Manager's press in the UI counts.
+3. **Run no destructive command outside `$SLP_TEST_REPO`.** The cleanup in §10 is scoped to the test repo, its
+   `slp/*` branches and the test project; it must never touch other runs, workspaces, projects or the parent
+   `projects/` directory, and every deletion in it requires explicit Manager approval.
 4. **Do not modify product code to make a step pass.** File a defect with reproduction instead (§11).
 5. The long-running command used in Scenario C is a bounded `sleep`. Do not substitute an uncontrolled or
    destructive background process.
@@ -48,50 +61,47 @@ Record: Paseo version, plugin revision/commit, bus port, provider versions.
 
 ---
 
-## 2. Create the disposable repository
+## 2. The disposable repository (prepared)
+
+`$SLP_TEST_REPO` was created on 2026-11-06 as an independent Git repository (default branch `main`, repo-local
+identity `SLP Live Acceptance <slp-live@example.invalid>`, `commit.gpgsign false`). It holds a minimal TypeScript
+in-memory invoice store (`src/invoices.ts`, `test/invoices.test.ts`) whose only dependencies are `typescript` and
+`@types/node`; tests run on Node's built-in runner, so `npm run check` needs no framework. Its README marks it as
+disposable and reserved for SLP live acceptance.
+
+It is registered in Paseo as project `prj_63e711c4b517ef66` (`paseo project create "$SLP_TEST_REPO"`).
+
+Verify before starting:
 
 ```bash
-export SLP_TEST_ROOT="$HOME/slp-live-acceptance"
-mkdir -p "$SLP_TEST_ROOT" && cd "$SLP_TEST_ROOT"
-
-git init -b main slp-live-repo && cd slp-live-repo
-git config user.email "slp-live@example.invalid"
-git config user.name  "SLP Live Acceptance"
-git config commit.gpgsign false
-
-mkdir -p src
-cat > README.md <<'EOF'
-# SLP live acceptance fixture
-Disposable repository. Safe to delete.
-EOF
-cat > src/invoices.ts <<'EOF'
-export interface Invoice { id: string; total: number; archived: boolean; }
-export const invoices: Invoice[] = [];
-EOF
-git add -A && git commit -m "initial commit"
-
-echo "TEST REPO: $(pwd)"
+git -C "$SLP_TEST_REPO" status -sb          # expect "## main", nothing else
+git -C "$SLP_TEST_REPO" log --oneline       # expect the initial commit and the provisioning commit
+git -C "$SLP_TEST_REPO" worktree list       # expect only the main checkout
+(cd "$SLP_TEST_REPO" && npm install && npm run check)   # typecheck + 4 tests pass
+paseo project ls | grep slp-live-repo       # expect prj_63e711c4b517ef66 at exactly $SLP_TEST_REPO
 ```
 
-**[MANAGER]** Register it in Paseo: **Projects → Add project →** select `$SLP_TEST_ROOT/slp-live-repo`.
-
-```bash
-paseo project ls | grep slp-live-repo   # confirm registration, record the project id
-```
+If the repository is missing or does not match, **stop and report**; do not recreate it over an existing path.
 
 ---
 
-## 3. Provision `.slp` and the skill
+## 3. `.slp` and the skill (provisioned)
 
-**[MANAGER]** Open the **SLP Orchestrator** plugin panel with the test project selected and use:
+Provisioned through the plugin's own RPCs, invoked with `tools/bin/slp-rpc` (the same handlers the panel's
+buttons call), then committed:
 
-1. **Init project prompts** (`slp.project.prompts.init`) — seeds `.slp/SUPERVISOR.md`, `.slp/LEAD.md`,
-   `.slp/QA_LEAD.md`, `.slp/peers/**`.
-2. **Init skill** (`slp.skill.init`) — installs `slp-manager` into `.agents/skills/` and `.claude/skills/`.
-3. **Validate project** (`slp.project.validate`) — expect no errors.
+1. `slp.project.prompts.init` — seeded `.slp/SUPERVISOR.md`, `.slp/LEAD.md`, `.slp/QA_LEAD.md` and five default
+   peers in `.slp/peers/`.
+2. `slp.skill.init` — installed `slp-manager` into `.agents/skills/` and `.claude/skills/`.
+3. `slp.project.validate` — `ok: true`, 0 errors, 3 advisory warnings (`testpolicy.missing`,
+   `worktree.no_setup`, `worktree.no_include`). `slp.project.scaffold` was **not** applied: it would replace the
+   default peers with stack-specific ones and leave TODO test commands. The warnings mean fresh worktrees do
+   not get `npm install` automatically; peers must run it before `npm run typecheck`.
+
+Re-check before each session (read-only):
 
 ```bash
-cd "$SLP_TEST_ROOT/slp-live-repo"
+cd "$SLP_TEST_REPO"
 ls .slp .slp/peers .agents/skills/slp-manager   # expect all present
 
 # The seeded Supervisor workflow must carry the Phase 1 approval rules
@@ -99,10 +109,11 @@ grep -c "slp_submit_spec"                   .slp/SUPERVISOR.md   # expect >= 1
 grep -c "One approval authorizes one feature" .slp/SUPERVISOR.md # expect 1
 grep -c "in a state the runtime cannot report" .slp/LEAD.md      # expect 1
 
-git add -A && git commit -m "provision .slp and slp-manager skill"
+/Volumes/Work/alvenix/projects/paseo-slp-orchestrator/tools/bin/slp-rpc \
+  slp.project.validate "{\"repoPath\":\"$SLP_TEST_REPO\"}"       # expect "ok": true, "errorCount": 0
 ```
 
-**Checkpoint (lockstep):** if either `grep` returns 0, the seeded templates have drifted from the engine
+**Checkpoint (lockstep):** if any `grep` returns 0, the seeded templates have drifted from the engine
 (`AGENTS.md` §1). Stop and report before running any scenario.
 
 ---
@@ -233,8 +244,8 @@ paseo workspace ls | grep -iE "slp|invoice"   # record workspace ids and resolve
 # After D5 — expect owned entries gone, Supervisor workspace absent from the archived set
 sqlite3 "$SLP_DB" "select json_extract(payload,'\$.pipelineWorkspaces') from runs where id='$RUN_A';"
 # After D7 — expect a new workspace id and a new slp/* branch
-git -C "$SLP_TEST_ROOT/slp-live-repo" worktree list
-git -C "$SLP_TEST_ROOT/slp-live-repo" branch --list 'slp/*'
+git -C "$SLP_TEST_REPO" worktree list
+git -C "$SLP_TEST_REPO" branch --list 'slp/*'
 ```
 
 Record resolved checkout paths and workspace ids, **redacting the home directory** (write `<HOME>/…`).
@@ -305,29 +316,43 @@ sqlite3 "$SLP_DB" "select json_extract(payload,'\$.pipelines') from runs where i
 
 ## 10. Safe cleanup
 
-Scoped to test resources only. **Read each command before running it.**
+Scoped to test resources only. **Nothing here runs automatically, and no agent may run any deletion step on its
+own initiative.** Each step marked **[MANAGER APPROVAL]** requires the Manager's explicit go-ahead for that
+specific step, given after reading the listed targets. Keeping the test repository between sessions is the
+default and is always safe.
+
+Hard rules:
+
+- **Never delete, move or `rm` the parent `/Volumes/Work/alvenix/projects/` directory** or anything in it other
+  than `$SLP_TEST_REPO`. It holds real client projects.
+- **Never remove the test repository automatically**, from a script, a loop, a cleanup hook or an agent.
+- Never delete `~/.slp-orchestrator/orchestrator.sqlite3` (see below).
 
 ```bash
 # 1. [MANAGER] Abort any still-active test run from the panel, then archive it.
 
-# 2. Remove test worktrees and slp/* branches (test repo only)
-cd "$SLP_TEST_ROOT/slp-live-repo"
-git worktree list
-git worktree remove <each test worktree path> --force
-git worktree prune
-for b in $(git branch --list 'slp/*' | tr -d ' *'); do git branch -D "$b"; done
+# 2. [MANAGER APPROVAL] Remove test worktrees and slp/* branches (test repo only).
+#    List first and show the Manager exactly what will go:
+git -C "$SLP_TEST_REPO" worktree list
+git -C "$SLP_TEST_REPO" branch --list 'slp/*'
+#    Then, once approved, remove each listed test worktree individually, and the listed branches:
+git -C "$SLP_TEST_REPO" worktree remove <one listed test worktree path>
+git -C "$SLP_TEST_REPO" worktree prune
+git -C "$SLP_TEST_REPO" branch -D <each listed slp/* branch>
 
-# 3. [MANAGER] In Paseo: archive the test workspaces, then remove the test project.
+# 3. [MANAGER] In Paseo: archive the test workspaces. Removing the test project is optional and only on request.
 paseo workspace ls | grep slp-live-repo    # expect no remaining entries
-paseo project ls   | grep slp-live-repo    # expect no remaining entry
+paseo project ls   | grep slp-live-repo    # still listed unless the Manager removed it
 
-# 4. Delete the disposable repository
-rm -rf "$SLP_TEST_ROOT"
-
-# 5. Verify nothing else was touched
+# 4. Verify nothing else was touched
 paseo plugin ls
 paseo project ls          # every pre-existing project still present
 ```
+
+Deleting the repository itself is **not** part of routine cleanup. If the Manager explicitly asks for it, do it as
+a separate, confirmed action: remove the Paseo project first (step 3), then delete only the literal path
+`/Volumes/Work/alvenix/projects/slp-live-repo`. Never use a variable that could be empty, a glob, a relative
+path, or the parent directory.
 
 **Do not** delete `~/.slp-orchestrator/orchestrator.sqlite3`; it holds 14 unrelated historical runs. Test runs may
 remain in it as archived history — that is expected and harmless.
