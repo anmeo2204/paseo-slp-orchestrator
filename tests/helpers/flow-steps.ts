@@ -87,6 +87,36 @@ export async function submitAndApproveSpec(
   flow.approveProductSpec(runId, productSpecHash(productSpec));
 }
 
+// A feature with no screen, no endpoint and no user-visible surface at all: a nightly job plus its migration.
+// It deliberately has no "Screens"/"States" section, because the engine's claim is that such a feature relies on
+// its observable behaviors and scenarios instead of inventing a surface to describe.
+export const NON_UI_PRODUCT_SPEC = [
+  "Scope: a nightly background job that marks invoices older than 90 days as 'expired', plus a migration adding an expired_at column.",
+  "Out of scope: notifying users, any UI change, and backfilling historical data.",
+  "Observable behaviors: the job runs at 02:00; each run writes one summary log line with the number of invoices it changed; running it again the same day changes no further records (idempotent).",
+  "Business rules, data and edge cases: the 90-day threshold is evaluated in UTC; invoices already 'paid' are never changed; if the database connection drops mid-run the job stops and leaves no partial update.",
+  "Acceptance scenarios:",
+  "GWT-1: Given an invoice 91 days old in state 'open' When the nightly job runs Then its state is 'expired' and expired_at equals the run timestamp.",
+  "GWT-2: Given an invoice 91 days old in state 'paid' When the job runs Then its state is unchanged.",
+  "GWT-3: Given the job already completed today When it runs again Then no record changes and the summary logs 0.",
+  "GWT-4: Given the database disconnects mid-run When the job runs Then no invoice is left partially updated.",
+  "Unknowns and assumptions: assumes the existing scheduler can run the job; whether historical data needs a backfill is still open and was asked.",
+].join("\n");
+
+// Every criterion names the scenario it covers, which is the traceability the QA Lead relies on to spot
+// scenarios nobody verified. SAMPLE_BRIEF deliberately does not, so this fixture is what exercises it.
+export const NON_UI_BRIEF = {
+  approach: "Add an expired_at migration, implement one job service on the existing scheduler, update rows in a single transaction, and leave the HTTP layer untouched.",
+  criteria: [
+    { id: "C1", requirement: "GWT-1: an open invoice older than 90 days becomes expired with expired_at set.", verification: "npm run test -- invoice-expiry (case open-91-days)" },
+    { id: "C2", requirement: "GWT-2: a paid invoice is never changed by the job.", verification: "npm run test -- invoice-expiry (case paid-untouched)" },
+    { id: "C3", requirement: "GWT-3: a second run on the same day changes no records.", verification: "npm run test -- invoice-expiry (case idempotent-rerun)" },
+    { id: "C4", requirement: "GWT-4: a database failure mid-run leaves no partial update.", verification: "npm run test -- invoice-expiry (case rollback-on-disconnect)" },
+  ],
+  inScope: ["the expired_at migration", "the invoice expiry job service"],
+  outOfScope: ["user notifications", "any UI change", "historical backfill"],
+};
+
 export async function delegateToLead(
   flow: Flow,
   runId: string,
