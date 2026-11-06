@@ -77,7 +77,7 @@ export function delegationMessage(acceptanceCriteria: string, context?: Delegate
 
   messageSections.push(
     // Remind Leads in pre-existing projects how to revise a locked brief without overriding their .slp/LEAD.md workflow.
-    "Follow your configured .slp/LEAD.md workflow and available .slp peer roles to define your pipeline stages with slp_define_pipeline. Every stage peer runs in your worktree and receives its assignment by mail. When implementation or merge conflicts, or a Supervisor slp_notify about a spec change, require a new approach, call slp_pause_peers, then slp_revise_brief with the replacement brief and a reason, then slp_resume_peers. Once the pipeline is defined, end your turn.",
+    "Follow your configured .slp/LEAD.md workflow and available .slp peer roles to define your pipeline stages with slp_define_pipeline. Every stage peer runs in your worktree and receives its assignment by mail. When implementation or merge conflicts, or a Supervisor slp_notify about a spec change, require a new approach, call slp_pause_peers and read its reply: slp_revise_brief is accepted only once the runtime confirms every stage peer stopped, and refused while one is unpaused or still running a command. Then call slp_revise_brief with the replacement brief and a reason, then slp_resume_peers. Once the pipeline is defined, end your turn.",
   );
   return messageSections.join("\n\n");
 }

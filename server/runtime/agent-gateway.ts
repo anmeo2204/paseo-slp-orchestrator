@@ -125,6 +125,7 @@ export class AgentGateway {
       archivedAt: null,
       pausedAt: null,
       pausedReason: null,
+      pauseConfirmedAt: null,
       token: randomBytes(24).toString("base64url"),
       awaitingTool: spec.awaitTool,
       // Starts the nudge clock at creation: an agent that never calls the tool it owes is detected by the sweeper from this timestamp.

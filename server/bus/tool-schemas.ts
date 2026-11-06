@@ -164,7 +164,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // Enables a Lead to immediately pause its child peers while updating the Brief or resolving a Spec change.
   slp_pause_peers: {
     roles: ["master_lead", "qa_lead"],
-    description: "Immediately pause active child stage peers (interrupting their current turn/shell and locking writes) while you revise the Brief or handle a Spec update.",
+    description: "Immediately pause active child stage peers (interrupting their current turn/shell and locking writes) while you revise the Brief or handle a Spec update. It then checks the runtime and reports which peers actually stopped; slp_revise_brief stays blocked until every live peer of the stage is confirmed stopped. Handle a peer it could not confirm with slp_handle_peer_shell or slp_escalate.",
     input: z.object({
       pipelineId: pipelineIdField.optional(),
       peerAgentIds: z.array(z.string().trim().min(1)).optional(),
@@ -184,7 +184,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // The only way to change a brief after it is locked. Writes the pipeline brief the peers and QA graders follow.
   slp_revise_brief: {
     roles: ["master_lead", "qa_lead"],
-    description: "Replace the locked brief of a pipeline you own. Use it after slp_pause_peers when the spec changed or the technical approach must switch, then call slp_resume_peers.",
+    description: "Replace the locked brief of a pipeline you own. Call slp_pause_peers first and wait until it confirms every stage peer stopped: this is refused while any live peer of the current stage is unpaused or still running a command, because the peer would keep building the brief you are replacing. Call slp_resume_peers afterwards.",
     input: z.object({
       pipelineId: pipelineIdField.optional(),
       reason: z.string().trim().min(1),

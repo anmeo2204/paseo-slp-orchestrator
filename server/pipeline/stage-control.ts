@@ -3,6 +3,8 @@ import type { BusCaller } from "../bus/http-mcp";
 import type { PipelineBrief } from "../../shared/pipeline";
 import { isPipelineLeadRole } from "../../shared/roles";
 import type { PipelineContext } from "./context";
+import { liveStagePeers, resolveLeadPipelineAndStage } from "./peer-pause";
+import { probePeerQuiescence } from "./peer-quiesce";
 import { pipelineFinalizationBriefing } from "./stage-briefings";
 import { requirePipeline, requireStageLead } from "./stage-context";
 import { fallbackLeadIdFor } from "./qa/qa-phase-state";
@@ -48,38 +50,88 @@ export function approveStage(
 }
 
 // Replaces a locked brief in the pipeline record the peers and QA graders read. Does not end the Lead's turn.
-export function reviseBrief(
+// A locked brief is the contract the stage's developer is building against right now, so it may only move once the
+// runtime confirms no live peer of that stage can still be writing under the brief being replaced.
+export async function reviseBrief(
   ctx: PipelineContext,
   caller: BusCaller,
   input: { pipelineId?: string; reason: string; brief: PipelineBrief },
-): string {
+): Promise<string> {
   const run = ctx.store.require(caller.runId);
   if (!isPipelineLeadRole(caller.role)) throw new ToolError("Only a Lead can revise a brief.");
-  const callerRecord = run.agents[caller.agentId];
-  const pipelineId = input.pipelineId?.trim()
-    || callerRecord?.pipelineId
-    || Object.values(run.pipelines).find((candidatePipeline) => candidatePipeline.leadAgentId === caller.agentId)?.id;
-  if (!pipelineId) throw new ToolError("Specify pipelineId. This Lead has no pipeline yet.");
-  const pipeline = requirePipeline(run, pipelineId);
-  const ownsPipeline = pipeline.leadAgentId === caller.agentId
-    || caller.agentId === run.masterLeadAgentId
-    || pipeline.stages.some((candidateStage) => candidateStage.forkedLeadAgentId === caller.agentId);
-  if (!ownsPipeline) throw new ToolError(`Lead '${caller.agentId}' does not own pipeline '${pipeline.name}'.`);
+  const { pipeline, stage } = resolveLeadPipelineAndStage(run, caller, input.pipelineId);
+  const pipelineId = pipeline.id;
+  // Probing the runtime is asynchronous, so it happens before the mutator; the mutator then re-reads persisted
+  // state and rejects the revision if anything moved, which keeps the decision and the write atomic.
+  const quiescenceByAgentId = await probePeerQuiescence(
+    ctx,
+    run,
+    liveStagePeers(run, stage).map((peerRecord) => peerRecord.agentId),
+  );
   const revisedAt = new Date().toISOString();
-  ctx.store.mutate(run.id, (mutableRun) => {
-    const mutablePipeline = requirePipeline(mutableRun, pipelineId);
-    mutablePipeline.brief = input.brief;
-    mutablePipeline.briefLockedAt = revisedAt;
-    mutablePipeline.updatedAt = revisedAt;
-  });
-  ctx.logEvent(run.id, {
-    taskId: pipelineId,
-    from: caller.agentId,
-    to: "pipeline",
-    kind: "brief.revised",
-    summary: `${pipeline.name}: ${input.reason}`,
-    outcome: "delivered",
-  });
+  // The store mutates the live pipeline object, so the brief being replaced is described before it is overwritten.
+  const replacedLockedAt = pipeline.briefLockedAt ?? "none";
+  const replacedCriterionCount = pipeline.brief?.criteria.length ?? 0;
+  try {
+    const confirmedPeerIds = ctx.store.mutate(run.id, (mutableRun) => {
+      const { pipeline: mutablePipeline, stage: mutableStage } = resolveLeadPipelineAndStage(mutableRun, caller, input.pipelineId);
+      if (mutablePipeline.id !== pipelineId) {
+        throw new ToolError("The pipeline's active stage changed while this revision was being validated. Call slp_get_pipeline and try again.");
+      }
+      const unsafePeerDescriptions: string[] = [];
+      const safePeerIds: string[] = [];
+      for (const livePeer of liveStagePeers(mutableRun, mutableStage)) {
+        if (!livePeer.pausedAt) {
+          unsafePeerDescriptions.push(`\`${livePeer.agentId}\` is not paused`);
+          continue;
+        }
+        const quiescence = quiescenceByAgentId.get(livePeer.agentId);
+        if (!quiescence?.quiesced) {
+          unsafePeerDescriptions.push(`\`${livePeer.agentId}\` ${quiescence?.blocker ?? "was not part of the pause check"}`);
+          continue;
+        }
+        safePeerIds.push(livePeer.agentId);
+      }
+      if (unsafePeerDescriptions.length > 0) {
+        throw new ToolError([
+          `The locked brief of '${mutablePipeline.name}' cannot be replaced while a stage peer may still be writing under it: ${unsafePeerDescriptions.join("; ")}.`,
+          "Call slp_pause_peers first and wait until it confirms every peer stopped, then call slp_revise_brief again.",
+          "If a peer will not stop, cancel its command with slp_handle_peer_shell or call slp_escalate.",
+        ].join(" "));
+      }
+      // The pause evidence is recorded on the peers the revision relied on, so the audit trail shows what was verified.
+      for (const safePeerId of safePeerIds) {
+        const mutablePeer = mutableRun.agents[safePeerId];
+        if (mutablePeer) mutablePeer.pauseConfirmedAt = revisedAt;
+      }
+      mutablePipeline.brief = input.brief;
+      mutablePipeline.briefLockedAt = revisedAt;
+      mutablePipeline.updatedAt = revisedAt;
+      return safePeerIds;
+    });
+    ctx.logEvent(run.id, {
+      taskId: pipelineId,
+      from: caller.agentId,
+      to: "pipeline",
+      kind: "brief.revised",
+      summary: `${pipeline.name}: ${input.reason} (previous lock ${replacedLockedAt}, criteria ${replacedCriterionCount} -> ${input.brief.criteria.length}, confirmed stopped: ${confirmedPeerIds.join(", ") || "no live peers"})`,
+      outcome: "delivered",
+    });
+  } catch (revisionFailure) {
+    // A rejected attempt to move a locked contract is itself worth auditing, so a bypass attempt leaves a trace.
+    if (revisionFailure instanceof ToolError) {
+      ctx.logEvent(run.id, {
+        taskId: pipelineId,
+        from: caller.agentId,
+        to: "pipeline",
+        kind: "brief.revise_blocked",
+        summary: `${pipeline.name}: ${input.reason}`,
+        outcome: "blocked",
+        reason: revisionFailure.message,
+      });
+    }
+    throw revisionFailure;
+  }
   return `Brief revised (${input.reason}). If stage peers are paused, call slp_resume_peers so they receive this brief.`;
 }
 

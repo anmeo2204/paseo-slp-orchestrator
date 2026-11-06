@@ -34,6 +34,8 @@ export class FakeAgentGateway {
   private readonly scriptedTurnReplies = new Map<string, string[]>();
   private readonly sessionIdByAgentId = new Map<string, string | null>();
   private readonly activeShellByAgentId = new Map<string, ActiveShellCall | null>();
+  // Agents that finish the turn a prompt starts, which is how a peer behaves when it obeys a Lead's interrupt.
+  private readonly endsTurnOnPrompt = new Set<string>();
   private agentCounter = 0;
 
   constructor(private readonly store: RunStore) {}
@@ -57,6 +59,13 @@ export class FakeAgentGateway {
 
   setActiveShellCall(agentId: string, shellCall: ActiveShellCall | null): void {
     this.activeShellByAgentId.set(agentId, shellCall);
+  }
+
+  // A real peer that is told to stop reads the message and ends its turn, leaving the session idle. Without this
+  // the agent stays "running" forever, which is the behaviour of a peer that ignores its Lead's interrupt.
+  setEndsTurnOnPrompt(agentId: string, endsTurn = true): void {
+    if (endsTurn) this.endsTurnOnPrompt.add(agentId);
+    else this.endsTurnOnPrompt.delete(agentId);
   }
 
   markEveryAgentIdle(): void {
@@ -113,7 +122,7 @@ export class FakeAgentGateway {
     // Sending a prompt to a mid-turn agent in Paseo interrupts its active shell tool call and starts a new turn.
     this.activeShellByAgentId.delete(agentId);
     // a delivered prompt starts a turn; the test decides when it ends
-    this.statusByAgentId.set(agentId, "running");
+    this.statusByAgentId.set(agentId, this.endsTurnOnPrompt.has(agentId) ? "idle" : "running");
   }
 
   async runTurn(agentId: string, text: string, _timeoutMs: number): Promise<TurnResult> {

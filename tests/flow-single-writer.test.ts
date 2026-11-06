@@ -1,6 +1,7 @@
 // Covers the anti-over-engineering contract: one writer per pipeline, a locked brief, QA scorecards the Lead
 // decides on, and a rework cap that hands the final decision to the human through the Supervisor.
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORCHESTRATION_SETTINGS } from "../shared/orchestration";
 import type { PipelineDefinition } from "../shared/pipeline";
 import { useFlowFixture, type Flow } from "./helpers/flow-fixture";
 import {
@@ -91,7 +92,8 @@ describe("single-writer pipeline shape", () => {
   it("does not fork peers unless the run enables it", async () => {
     const defaultFlow = await createFlow({ mode: "FULL_AUTO" });
     const { runId } = await startedRunWithPipeline(defaultFlow, DEFAULT_PIPELINE);
-    expect(defaultFlow.run(runId).orchestration).toEqual({ forkPeers: false, maxReworkRounds: 3 });
+    expect(defaultFlow.run(runId).orchestration).toEqual(DEFAULT_ORCHESTRATION_SETTINGS);
+    expect(DEFAULT_ORCHESTRATION_SETTINGS.forkPeers).toBe(false);
     const defaultPeerSpecs = defaultFlow.gateway.createdAgents.filter(({ spec }) => spec.role === "peer");
     expect(defaultPeerSpecs.length).toBeGreaterThan(0);
     expect(defaultPeerSpecs.every(({ spec }) => spec.extraOptions === undefined)).toBe(true);

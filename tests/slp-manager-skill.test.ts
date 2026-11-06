@@ -222,6 +222,11 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).toContain("slp_pause_peers");
     expect(skillMarkdown).toContain("slp_revise_brief");
     expect(skillMarkdown).toContain("slp_resume_peers");
+    // A generated .slp must teach that a pause request is not proof the peer stopped, or Leads will expect
+    // slp_revise_brief to succeed straight after slp_pause_peers and treat the refusal as an engine fault.
+    expect(skillMarkdown).toContain("must confirm the peers stopped before the brief moves");
+    expect(skillMarkdown).toContain("`slp_stage_report` is refused until it is resumed");
+    expect(defaultProjectPrompts().lead.workflow).toContain("confirmed stopped");
     expect(skillMarkdown).not.toMatch(/slp_board_/);
     // Fork and the rework cap are run settings; generated .slp files must not depend on an inherited Lead session.
     expect(skillMarkdown).toContain("never assume it inherited the Lead's context");

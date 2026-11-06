@@ -58,6 +58,30 @@ const TOOL_HANDLERS: { [Name in BusToolName]: ToolHandler<Name> } = {
   slp_revise_brief: (ctx, caller, input) => reviseBrief(ctx, caller, input),
 };
 
+// A paused peer keeps the tools it needs to read its situation and raise a problem, and loses the ones that would
+// commit work: its results were produced under the brief the Lead is replacing, so accepting them would defeat the pause.
+const TOOLS_ALLOWED_WHILE_PAUSED = new Set<BusToolName>([
+  "slp_get_run",
+  "slp_get_pipeline",
+  "slp_list_pipelines",
+  "slp_await_answer",
+  "slp_answer",
+  "slp_escalate",
+]);
+
+// Reaching the bus proves the peer is executing a turn, so any confirmation that it had stopped is now stale.
+function assertToolAllowedWhilePaused(ctx: PipelineContext, caller: BusCaller, toolName: BusToolName): void {
+  ctx.store.mutate(caller.runId, (mutableRun) => {
+    const mutableCaller = mutableRun.agents[caller.agentId];
+    if (mutableCaller?.pausedAt) mutableCaller.pauseConfirmedAt = null;
+  });
+  if (TOOLS_ALLOWED_WHILE_PAUSED.has(toolName)) return;
+  throw new ToolError(
+    `Your Lead paused you (${ctx.store.require(caller.runId).agents[caller.agentId]?.pausedReason ?? "no reason recorded"}), so '${toolName}' is unavailable. `
+    + "Stop editing files and running commands and end your turn. Your Lead resumes you with the updated Brief, and only then do you report. Use slp_escalate if you must raise a problem now.",
+  );
+}
+
 export function createBusDispatcher(ctx: PipelineContext): BusTransportDeps {
   return {
     resolveCaller(token: string): BusCaller | null {
@@ -88,6 +112,7 @@ export function createBusDispatcher(ctx: PipelineContext): BusTransportDeps {
         if (!isBusToolName(toolName)) throw new ToolError(`Unknown tool '${toolName}'.`);
         const definition = BUS_TOOL_DEFINITIONS[toolName];
         if (!(definition.roles as readonly SlpRole[]).includes(caller.role)) throw new ToolError(`Tool '${toolName}' is not available to ${caller.role}.`);
+        if (lookup.agentRecord.pausedAt) assertToolAllowedWhilePaused(ctx, caller, toolName);
         const parsedInput = definition.input.safeParse(rawArguments ?? {});
         if (!parsedInput.success) throw new ToolError(parsedInput.error.message);
         // The same catalogue selects the schema and handler; the cast only bridges their mapped-type correlation.

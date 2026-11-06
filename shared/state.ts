@@ -33,6 +33,9 @@ export const AgentRecordSchema = z.object({
   // Set when a Lead pauses a child peer mid-stage so the peer stops writing and awaits updated Brief guidance.
   pausedAt: z.string().nullable().default(null),
   pausedReason: z.string().nullable().default(null),
+  // Set only after the runtime reported the paused peer idle with no active shell; a pause request alone never sets it.
+  // Cleared on resume and whenever the peer calls the bus again, so it can never authorize a revision after work restarted.
+  pauseConfirmedAt: z.string().nullable().default(null),
   projectRole: z.string().nullable().default(null),
   // Only additional peers use this explicit grant; primary agents derive access from their pipeline assignment.
   writeScope: z.array(z.string()).default([]),
