@@ -5,8 +5,8 @@
 | Repository | `anmeo2204/paseo-slp-orchestrator` |
 | Branch | `an_dev` |
 | Baseline / verified at | `aace356` (working tree clean, in sync with `origin/an_dev`) |
-| Date | 2026-11-06 |
-| Status | **ENVIRONMENT_BLOCKED** — no scenario in the test matrix was executed |
+| Date | 2026-11-06; Scenario A evidence added 2026-11-07 |
+| Status | **Scenario A: PARTIAL** (live Run #15, §2.1). Scenarios B–F not executed. Scenario C prepared (§2.2) |
 | Recommendation | **BLOCKED** (for live closure) — see §7 |
 
 > **Evidence labelling.** Everything in §1 and §3 was observed on the live installation and is labelled
@@ -62,19 +62,163 @@ Re-checked on 2026-11-06 while preparing the test repository: `codex login statu
 
 ## 2. Scenario results
 
-No scenario was executed. Every scenario's critical path requires a human Manager acting in the plugin UI
-(see §3.2), and the task forbids simulating or bypassing that approval.
+The original 2026-11-06 report executed nothing. On 2026-11-06 (UTC) the Manager ran Scenario A as Run #15;
+its evidence was verified independently on 2026-11-07 (§2.1). The other scenarios still need the Manager.
 
-| Scenario | Result | Blocking step |
+| Scenario | Result | Blocking step / note |
 |---|---|---|
-| A — FULL_AUTO approval gate | **BLOCKED** | Requires `slp.run.start` (UI) and a genuine Manager press of **Approve** (UI) |
-| B — SEMI_AUTO and STEP_BY_STEP_DEBUG | **BLOCKED** | Same, in two further modes |
-| C — F1 Brief revision safety | **BLOCKED** | Requires a live run, which requires A's approval first |
-| D — F5 workspace identity and follow-up delegation | **BLOCKED** | Requires a live run and delegation, i.e. an approved Spec |
-| E — F2 feature-scoped approval | **BLOCKED** | Requires two independent Manager approvals in the UI |
-| F — F6 non-UI feature | **BLOCKED** | Requires a live run and an approved Spec |
+| A — FULL_AUTO approval gate | **PARTIAL** | Gate, approval record, delegation and autonomous execution verified live. Step A8 (exceptional escalation) was not exercised; step A4 (Manager read the full card) is attested only by the Manager. See §2.1 |
+| B — SEMI_AUTO and STEP_BY_STEP_DEBUG | **NOT RUN** | Needs two Manager-started runs and two UI approvals |
+| C — F1 Brief revision safety | **NOT RUN — prepared** | Run #15 is completed, so C needs a new run (§2.2, runbook §6) |
+| D — F5 workspace identity and follow-up delegation | **NOT RUN** | Partial observations in §2.1 (workspace retirement), but follow-up delegation not exercised |
+| E — F2 feature-scoped approval | **NOT RUN** | Requires two independent Manager approvals in the UI |
+| F — F6 non-UI feature | **NOT RUN** | Run #15's feature had no UI surface, but F6's propagation checks were not performed against it |
 
-**Scenarios passed: 0. Scenarios failed: 0. Scenarios blocked: 6.** Nothing is claimed as passing.
+**Scenarios passed: 0. Partial: 1 (A). Failed: 0. Not run: 5.**
+
+### 2.1 Scenario A — Run #15 `live a full auto #15` (independently verified 2026-11-07)
+
+**Method.** Read-only only: `sqlite3 …?mode=ro` against `~/.slp-orchestrator/orchestrator.sqlite3`, `git` reads
+in the test repo, `paseo ls / logs / workspace ls`, and the provider session transcripts (Codex rollouts and the
+two Cursor ACP session stores, copied to `/tmp` before reading). The test was re-run in a throwaway clone at
+`/tmp/slp15-verify`, never in the test repo. Run #15 and the test repo were not modified (`git status` empty
+before and after).
+
+**Evidence classes.** **RUNTIME** = written by the plugin engine, git or Paseo, not by an agent.
+**INDEPENDENT** = reproduced by this audit. **AGENT-REPORTED** = text an SLP agent wrote in a report, accepted
+only where RUNTIME or INDEPENDENT evidence agrees with it. **MANAGER-ATTESTED** = a human action leaving no
+distinguishing runtime trace.
+
+#### Run identity and configuration (RUNTIME)
+
+| Field | Value |
+|---|---|
+| Run id | `a891b845-6214-4382-aa15-699d2a959cbd` (rowid 15) |
+| Repo / base / mode | `slp-live-repo`, `main`, **FULL_AUTO**, engine `dynamic-stages-v1` |
+| Providers | Supervisor, Lead and peers all `codex/gpt-6.1-sol` (thinking: medium/medium/low; permission mode `full-access`) |
+| Orchestration | `forkPeers: false`, `maxReworkRounds: 3`, `pauseQuiesceTimeoutMs: 30000` |
+| Plugin build | Last reload `2026-11-06T16:48:41Z` (daemon log), before run start `17:06:33Z`; checkout HEAD `7e823e6`, whose diff from `aace356` is docs-only. Daemon reports `daemonVersion 0.15.2` (§1 recorded runtime `0.15.0`) |
+| Created / final update | `17:06:33.835Z` / `17:37:09.773Z` |
+
+#### Step-by-step against runbook §4
+
+| Step | Result | Evidence |
+|---|---|---|
+| A1 Spec drafted | **VERIFIED** | RUNTIME: `run.productSpec` has all six sections (scope, behaviours, API surface/states, rules/edge cases, Given/When/Then A1–A8, assumptions). The Manager's prompts are in the Supervisor's Codex rollout |
+| A2 Pre-approval `slp_delegate` refused | **VERIFIED** | RUNTIME: `comm_logs 17:11:55.161Z slp_delegate outcome=blocked`, reason: *"Delegation is blocked because a human has not approved the Product Spec being delegated. Unapproved: 'live a full auto #15': no approved spec exists. Submit it with slp_submit_spec … This applies in every run mode."* Requested on purpose by the Manager (rollout `17:11:19Z`) |
+| A3 `slp_submit_spec`, turn ends | **VERIFIED** | RUNTIME: `spec.submitted` (sha256 `bea8ce18b6da…`) at `17:12:01Z`, re-submitted with the **same hash** at `17:16:31Z`; one approval record, so resubmission is idempotent. The rollout shows the turn ending at `17:12:32Z` and `17:17:01Z` with no `slp_delegate` in between. The intermediate `pending / approvedVia null` state was not snapshotted; only the final record exists |
+| A4 Manager reads full card | **MANAGER-ATTESTED** | No runtime trace distinguishes a reviewed card from an unreviewed one |
+| A5 Approve | **VERIFIED, with the §3.2 caveat** | RUNTIME: record `0f3edad9…` `status approved`, `submittedBy` = Supervisor `2ede51bb…`, `submittedAt 17:12:01.209Z`, `approvedAt 17:29:23.382Z`, **`approvedVia "slp-orchestrator-ui"`**, `supersededAt null`; `spec.approved` logged `from: manager`. See *Approval provenance* below |
+| A6 Delegation succeeds | **VERIFIED** | RUNTIME: `slp_delegate outcome=delivered 17:30:32.842Z`, 69 s after approval. Lead `dd38afee…` (`master_lead`, created `17:30:32.350Z`) and QA Lead `8031e5b8…` (`qa_lead`, created `17:30:32.516Z`), both parented to the Supervisor, both `codex`, each in its own worktree workspace. The transient `planning` status was not captured; the run is now `completed` |
+| A7 No routine human approval between stages | **VERIFIED** | RUNTIME: every `stage.approved` / `slp_approve_stage` came from the Lead or QA Lead; there were no `gate` events and `run.gate` is null throughout. Only one human action is logged after `run.started`: `spec.approved` |
+| A8 Escalation still reaches the Manager | **NOT EXERCISED** | No `slp_escalate` and no `question.*` addressed to the Manager in the 112 log rows. **Missing check** |
+
+**Approval provenance.** `approvedVia` cannot by itself prove a human pressed Approve, because the handler stamps
+`slp-orchestrator-ui` on every `slp.spec.approve` call (§3.2), and the daemon does not log plugin RPC calls
+individually. So the audit looked for a self-approval and found none:
+
+- None of the seven Codex sessions of Run #15 (Supervisor, Lead, QA Lead, architect, security-advisor, developer,
+  qa-grader) contains `slp-rpc`, `spec.approve`, `gate.approve`, `approve_gate`, `approve_main`,
+  `invokePluginRpc`, the daemon address `127.0.0.1:6767`, or `orchestrator.sqlite3`. The eighth agent (QA-stage
+  `node-developer` `21510795…`) never got a provider session (`sessionId null`).
+- Two Cursor ACP sessions were open in the test repo: *SLP Catalog Review* (`16:59Z`) and *Diagnose Run #15 Stuck
+  at Delegating* (created `17:24:40Z`, last write about `17:28Z`, before the `17:29:23Z` approval). Their shell
+  commands were read-only (`rg` on the daemon log, `ls`, `find`, a `mode=ro` SQLite query, `git worktree list`).
+  Neither ran `slp-rpc` or any approval RPC.
+
+Within the agents that touched this run, the approval did not come from an agent. A process outside those
+sessions cannot be excluded until approval RPCs check their caller. The *Diagnose* session also shows that the
+Manager read the 13-minute wait for approval as a hang. That wait was the gate working as designed.
+
+#### Delegation, pipelines and QA (RUNTIME unless stated)
+
+| Pipeline | Kind / owner | Stages | Result |
+|---|---|---|---|
+| `archived-invoices-http` `14e63bb3…` | feature, Lead `dd38afee…`, workspace `wks_df0b1e0440a42b47` | `plan-http-contract` (architect `f790197f…`, security-advisor `cbbf6834…`; 0 rework) → `implement-http-endpoint` (node-developer `9d25a88d…`; **1 rework**) | Brief locked `17:32:29.899Z`; `integrated 17:34:45Z`, base `7d28020`, merged `46811a9` |
+| `archived-invoices-qa-cycle-1` `96699bcb…` | qa, QA Lead `8031e5b8…`, workspace `wks_c4023ff9eebb707b` | `verify-archived-invoices` (qa-grader `96bfe00a…` reported; node-developer `21510795…` spawned, never ran) | `qa_closed 17:36:16Z` on `46811a9`, 0 rework |
+
+- The qa-grader's persisted scorecard (stage `084f1e7a…`) holds 13 entries: C1–C5 and A1–A8, all `pass`.
+  This is AGENT-REPORTED.
+- **INDEPENDENT:** `npm run check` at `681bd37` in a throwaway clone: `tsc --noEmit` exit 0, **14 tests, 14 pass,
+  0 fail** (10 in `test/http.test.ts`, 4 in `test/invoices.test.ts`). QA's targeted runs were reproduced exactly:
+  `^A[12] ` 2/2, `^A[345] ` 3/3, `^A[67] ` 2/2, `^A8 ` 2/2, `^returns empty 404` 1/1. Each of A1–A8 has a
+  matching named test.
+- **INDEPENDENT source check:** `src/http.ts` (24 lines) filters `invoice.archived === true`, projects exactly
+  `{id,total,archived}`, serialises before `writeHead`, and returns the specified generic 500 body. This is
+  consistent with the Spec.
+
+#### Git (RUNTIME, test repo read-only)
+
+| Check | Result |
+|---|---|
+| `681bd376` exists, on `main` | **VERIFIED**: `681bd37656aa203f9b6c46550e696ddce87c4b7d`, `SLP: merge slp/a891b845/qa-cycle-1`, parents `7d28020` + `46811a9`; `main` HEAD = `681bd37`; logged as `run.merged_to_base` at `17:37:09.175Z` |
+| History | `0e84b87` implementation → `59511cc` A1 fixture rework → `46811a9` pipeline merge → `681bd37` run merge |
+| Files changed by the run (`7d28020..681bd37`) | Exactly `src/http.ts` (+24), `src/index.ts` (+1), `test/http.test.ts` (+145). Store, config and dependencies untouched |
+| Working tree | Clean; `git worktree list` shows only the main checkout; no `slp/*` branches remain |
+
+#### Final status and cleanup (RUNTIME)
+
+- **Run #15 status: `completed`**, `gate null`, `archivedAt null`, `integrationBranch` reset to `main`.
+- `slp_present_to_manager` logged `delivered` at `17:37:09.773Z`; `supervisorReport` and `finalReport` are stored.
+- Lead archived `17:34:47Z` and QA Lead archived `17:37:09Z`; all six peers archived. Their worktree workspaces
+  (`wks_df0b…`, `wks_c402…`) no longer appear in `paseo workspace ls`, and `~/.paseo/worktrees/1vaqwd5v/` is empty.
+- The Supervisor `2ede51bb…` remains `idle` in the base workspace `wks_c3a30cdf07913852`. This is by design:
+  `retireRunResources` retires everything below the Supervisor.
+
+#### Discrepancies and observations
+
+1. **The auto-merge is attributed to "manager".** In FULL_AUTO, `presentToManager` calls `approveMain` itself
+   (`run-lifecycle.ts`). The merge into `main` therefore happened 0.6 s inside the Supervisor's
+   `slp_present_to_manager` call, with no human action. `approveMain` still logs it as `from: "manager"`. The
+   behaviour is by design; the log attribution is misleading for audit purposes.
+2. **"0 rework rounds" is scoped to QA.** The QA Lead's and Supervisor's reports say 0 rework. That is true for the
+   QA pipeline. The implementation stage had **one** Lead-requested rework (`slp_stage_rework 17:33:58Z`, commit
+   `59511cc`), which corrected the A1 fixture to the Spec's exact values.
+3. **`masterLeadAgentId == qaLeadAgentId`** in the final record. This is expected: `qa-handover.ts` reassigns it.
+   The feature Lead `dd38afee…` survives only in `agents`.
+4. **QA-stage peer never ran.** `21510795…` (node-developer) was spawned in the verify stage but has no provider
+   session and filed no report; the stage was approved on the qa-grader's report alone. This matches the QA
+   plan's "developer fixes only on request". Whether creating an idle peer is intended was not checked.
+5. **The test repo changed after §1.1.** Commit `7d28020` *"Tailor .slp catalog to the invoice store and fill
+   TEST_POLICY"* (`2026-11-06T17:02:49Z`) landed on `main` before the run, so Run #15's base was `7d28020`, not
+   `2d87ddb`. It edits `.slp/` peers, `TEST_POLICY.md`, `.worktreeinclude` and `paseo.json` only.
+6. **Agent tokens are stored in plain text** in `runs.payload.agents[*].token`. They are not reproduced here.
+
+**Scenario A verdict: PARTIAL.** The core claim holds on live evidence. The runtime refused delegation before
+approval, recorded one feature-scoped approval with `approvedVia "slp-orchestrator-ui"`, accepted delegation only
+afterwards, and then ran to a verified merge with no further human gate. Three things keep it from PASS: A8 was
+not exercised; A4 rests on the Manager's word; and approval provenance can only be bounded by the negative search
+above while approval RPCs do not check their caller.
+
+### 2.2 Scenario C readiness (prepared 2026-11-07, not started)
+
+**A new run is required.** Run #15 is `completed`: its Lead, QA Lead and peers are archived and their worktrees
+removed. `slp_pause_peers` and `slp_revise_brief` need a live Lead and a stage with a live peer. Starting a
+follow-up cycle inside Run #15 would mutate a completed run, which is out of bounds. The new run needs its own
+Spec approval by the Manager. Exact steps: `PHASE1_LIVE_TEST_RUNBOOK.md` §6.
+
+Findings from the Run #15 transcripts that shape the test (RUNTIME / code inspection):
+
+- **Codex shell calls are visible as canonical shell items.** This Codex build runs commands inside a code-mode
+  `exec` cell that calls `tools.exec_command`. Paseo still renders each one as `[Shell] <command>`, and
+  `@getpaseo/protocol` `tool-call-display.js` maps the `Shell` label to `detail.type === "shell"`. That is the
+  primary branch of `readActiveShellCallFromTimeline`. What Run #15 cannot show is a call in the `running` state,
+  because every call there was short.
+- **Main risk: early yield.** The tool contract in the rollouts says `exec_command` yields after `yield_time_ms`
+  (default 10 000 ms), and the `exec` cell after 30 000 ms, while the process keeps running in a unified-exec
+  session. The model then polls with `write_stdin`. If Paseo marks the shell item finished at the yield, F1 sees
+  `none` while `sleep` is still alive. That would be a false quiescence. Scenario C must therefore compare the
+  timeline with a host-level, read-only `ps` check at several points.
+- **`slp_pause_peers` interrupts the peer** via `gateway.prompt` before probing. The interrupt may or may not kill
+  the `sleep`, and both outcomes must be recorded. If it kills it, "refused while still running" cannot be shown
+  after the pause; the refusal before the pause (C3) still stands.
+- **What "unverified" can mean live.** `probePeerQuiescence` refuses for three runtime reasons: the session is still
+  running (`its session is still '<status>'`), the shell is still running (`its shell command … is still running`),
+  or the timeline read failed (`… could not be verified (…)`). The third needs a failed timeline read and cannot be
+  produced on demand without fault injection, which this test rules out. It stays **AUTOMATED (not live)** unless
+  it happens on its own.
+- **Any bus call from a paused peer clears `pauseConfirmedAt`** (`tool-handlers.ts:78`), so the C7 probe re-arms
+  the gate. This is expected.
 
 ---
 
@@ -214,9 +358,9 @@ behavioural observations:
    (`-rw-------`, owned by the invoking user). A process with the user's filesystem access could edit the store
    directly. This is the conventional local trust model rather than a defect, but it bounds the claim and should
    not be overstated. **No action proposed; recorded so the boundary is stated accurately.**
-2. **No live evidence exists for any Phase 1 behaviour** beyond plugin load, bus authentication, legacy-payload
-   compatibility and RPC reachability. In particular, nothing here speaks to F1's runtime quiescence observations,
-   F2's enforcement, F5's workspace identity, or F6's propagation.
+2. **Live evidence is limited to Scenario A** (§2.1): F2's pre-approval refusal and post-approval delegation in
+   FULL_AUTO, on `codex`. Nothing here yet speaks to F1's runtime quiescence observations, F2 across modes or
+   features, F5's follow-up delegation, or F6's propagation.
 3. **Detached subprocess termination remains unprovable** and is not claimed anywhere. F1 guarantees refusal
    without positive evidence, not that execution stopped.
 4. **This plugin repository is not SLP-provisioned** and is not the test subject. The live test subject is the
@@ -246,6 +390,8 @@ agent has invoked either; that access is a defect to fix, not a route to use.
    evidence capture and safe cleanup. Scenarios A, B and E require the Manager personally to read the full Spec in
    the panel and press **Approve** (A: once; B: once per mode; E: twice, one feature at a time).
 4. Return the captured evidence so this report can be completed with real results per scenario.
+   *Update 2026-11-07:* Scenario A is done as Run #15 (§2.1, PARTIAL). To close A, exercise step A8 (escalation)
+   in a later run. Scenario C needs a **new** run, started by the Manager, per runbook §6.
 5. Optionally decide whether a second pass on the `cursor` ACP provider is in scope, given its different
    permission path (§4).
 
@@ -267,6 +413,12 @@ Phase 1 therefore stands as **automated-verified and live-unvalidated**. Two liv
 Phase 1 claims (bus token enforcement, 14 real legacy payloads parsed without migration). A third, originally
 read as "RPC unreachable from a shell", is corrected in §3.2: plugin RPCs are shell-reachable and the approval
 handlers do not check the caller, which weakens F2's "only the UI can approve" claim beyond the MCP bus.
+
+*Update 2026-11-07.* Run #15 gives the first live Phase 1 evidence. On `codex` in FULL_AUTO, the F2 gate refused
+delegation before approval and allowed it only after a recorded approval. The run then completed autonomously and
+merged into the test repo's `main` at `681bd37`; the 14 tests were reproduced independently. Scenario A is
+**PARTIAL** (escalation step not exercised; approval provenance bounded by §3.2). B–F remain outstanding, so the
+recommendation does not change.
 
 Recommended disposition: keep the automated acceptance already granted, treat live acceptance as outstanding, and
 schedule the runbook with the Manager. **Phase 1 is not closed by this report.** Phase 2 has not been started.

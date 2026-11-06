@@ -149,8 +149,9 @@ sqlite3 "$SLP_DB" "select json_extract(payload,'\$.specApprovals') from runs whe
 # After A3: one record, status "pending", approvedAt null, approvedVia null
 # After A5: status "approved", approvedVia "slp-orchestrator-ui", approvedAt set
 
-sqlite3 "$SLP_DB" "select kind, outcome, substr(summary,1,90) from comm_logs
-                   where run_id='$RUN_A' and kind like 'spec.%' order by rowid;"
+sqlite3 "$SLP_DB" "select json_extract(payload,'\$.kind'), json_extract(payload,'\$.outcome'),
+                          substr(json_extract(payload,'\$.summary'),1,90) from comm_logs
+                   where run_id='$RUN_A' and json_extract(payload,'\$.kind') like 'spec.%' order by log_id;"
 # Expect spec.submitted (from Supervisor) and spec.approved (from "manager") as separate events
 ```
 
@@ -182,40 +183,124 @@ sqlite3 "$SLP_DB" "select json_extract(payload,'\$.mode'),
 
 ## 6. Scenario C — F1 Brief revision safety
 
-Continue in `$RUN_A` (already delegated and executing), at a stage with one developer peer.
+> **Revised 2026-11-07.** This section originally said to continue in `$RUN_A`. Scenario A ran as Run #15, which
+> is now `completed` with every Lead and peer archived. F1 needs a live Lead and a stage with a live peer, and a
+> follow-up cycle inside Run #15 would mutate a completed run. **Scenario C therefore needs a new run**, started
+> and approved by the Manager. Background: report §2.2.
+
+**Why the plan looks like this.** On this Codex build, shell commands run inside a code-mode `exec` cell, and
+`exec_command` **yields after ~10 s** while the process keeps running; the model then polls with `write_stdin`.
+F1 reads only the Paseo timeline, so the test compares the timeline with a host `ps` check at several points.
+That is the only way to tell "F1 refused correctly" from "F1 saw nothing". The command is a bounded
+`sleep 240 && echo done`: four minutes leaves room for C2–C5, which took about 2 minutes of Lead turns plus a
+30 s quiesce window in Run #15's timings. It writes nothing and ends by itself.
+
+**Not reachable live:** the `could not be verified (…)` refusal needs a failed timeline read. It cannot be produced
+without fault injection, which is out of bounds, so it stays AUTOMATED unless it occurs on its own.
+
+### 6.0 Setup
+
+1. **[MANAGER]** Confirm the test repo is clean and on the expected HEAD
+   (`git -C "$SLP_TEST_REPO" status -sb`; `git -C "$SLP_TEST_REPO" log --oneline -1` → `681bd37` or later).
+2. **[MANAGER]** Start a run from the panel: name `live-C-f1`, repo = test repo, base `main`, mode **FULL_AUTO**,
+   all three providers = **codex** (same models as Run #15). Leave `pauseQuiesceTimeoutMs` at 30000.
+   *FULL_AUTO auto-merges into the test repo's `main` when the run completes; starting it authorizes that merge
+   on the disposable repo only. To avoid the merge, abort the run after C8 instead (§10).*
+3. **[MANAGER]** Supervisor chat: *"Add GET /api/invoices/:id. It returns HTTP 200 with
+   `{"data":{"id","total","archived"}}` for an existing invoice and HTTP 404 with
+   `{"error":{"code":"NOT_FOUND","message":"Invoice not found"}}` otherwise. Reuse `createInvoiceServer`. No other
+   changes. Draft the Product Spec, submit it with slp_submit_spec, and stop."*
+4. **[MANAGER]** Read the full card, press **Approve**, then: *"Approved in the UI. Delegate now."*
+   Expect `slp_delegate outcome=delivered` and a Lead plus QA Lead. This is a second data point for Scenario A.
 
 ```bash
-# Record the Lead and peer agent ids
-sqlite3 "$SLP_DB" "select json_extract(payload,'\$.masterLeadAgentId') from runs where id='$RUN_A';"
-export PEER=<developer peer agent id>
+export SLP_DB="file:$HOME/.slp-orchestrator/orchestrator.sqlite3?mode=ro"
+export RUN_C=$(sqlite3 "$SLP_DB" "select id from runs order by rowid desc limit 1;")
+sqlite3 "$SLP_DB" "select json_extract(payload,'\$.title'), json_extract(payload,'\$.status') from runs where id='$RUN_C';"
+# Lead id (the feature Lead, before QA handover):
+sqlite3 "$SLP_DB" "select key from runs, json_each(json_extract(payload,'\$.agents'))
+                   where runs.id='$RUN_C' and json_extract(value,'\$.role')='master_lead';"
+export LEAD=<that id>
 ```
 
-| Step | Action | Expected |
-|---|---|---|
-| C1 | **[MANAGER]** Ask the peer to run a bounded long command: *"Run `sleep 120 && echo done` in your worktree."* | Peer enters a running shell tool call |
-| C2 | Confirm the runtime sees it | `paseo inspect $PEER` / `paseo logs $PEER` shows a **running** shell tool call. **If it does not appear, stop: F1's evidence source is not populated by this provider — record it as a provider-fidelity finding (report §4)** |
-| C3 | **[MANAGER]** Ask the Lead to call `slp_revise_brief` **without** pausing | **Refused**, naming the peer and `slp_pause_peers` |
-| C4 | **[MANAGER]** Ask the Lead to call `slp_pause_peers` | Reply names which peers were confirmed stopped and which were not |
-| C5 | While the `sleep` is still running, ask the Lead to call `slp_revise_brief` | **Refused**, citing the still-running command (or that its state could not be verified) |
-| C6 | Wait for the command to finish, then retry `slp_revise_brief` | **Accepted**; brief replaced |
-| C7 | **[MANAGER]** Ask the paused peer to call `slp_stage_report` (before resume) | **Refused** as paused; `slp_get_run` and `slp_escalate` still work |
-| C8 | **[MANAGER]** Ask the Lead to call `slp_resume_peers` | Peer receives the **updated** criteria |
+### 6.1 Start the long command in the developer peer
+
+5. Watch for the implementation stage to start (`stage.started … implement…: 1 peers`) and the developer peer to
+   appear:
 
 ```bash
-sqlite3 "$SLP_DB" "select kind, outcome, substr(coalesce(reason,summary),1,120) from comm_logs
-                   where run_id='$RUN_A' and kind like 'brief.%' order by rowid;"
-# Expect brief.revise_blocked (outcome "blocked", reason naming the peer) before brief.revised
+sqlite3 "$SLP_DB" "select json_extract(payload,'\$.ts'), json_extract(payload,'\$.kind'), json_extract(payload,'\$.summary')
+                   from comm_logs where run_id='$RUN_C' and json_extract(payload,'\$.kind')='stage.started' order by log_id;"
+sqlite3 "$SLP_DB" "select key, json_extract(value,'\$.projectRole') from runs, json_each(json_extract(payload,'\$.agents'))
+                   where runs.id='$RUN_C' and json_extract(value,'\$.role')='peer' and json_extract(value,'\$.archivedAt') is null;"
+export PEER=<the live developer peer id>
+```
 
-sqlite3 "$SLP_DB" "select json_extract(payload,'\$.agents.$PEER.pausedAt'),
-                          json_extract(payload,'\$.agents.$PEER.pauseConfirmedAt')
-                   from runs where id='$RUN_A';"
+6. **[MANAGER]** Open the developer peer in Paseo **as soon as it appears**; in Run #15 the developer finished in
+   about 75 s. Send: *"Live F1 test. Before anything else, run exactly this one shell command in your worktree, in
+   the foreground, and wait for it to finish: `sleep 240 && echo done`. Do not edit any file until it has
+   finished."* **Note the wall-clock time T0.**
+   *If the peer has already reported:* ask the Lead to call `slp_stage_rework` on the implementation stage with
+   the feedback "F1 live test: rerun the stage", which reopens it with a live peer. Then send the message above.
+
+### 6.2 Steps
+
+| Step | Action | Expected | Record |
+|---|---|---|---|
+| C1 | Message sent (6.1) | Peer starts the command | T0 |
+| C2a | At **T0+5 s**: timeline and host check (commands below) | `paseo logs` shows `[Shell] sleep 240 && echo done`; `ps` shows the process | Both outputs verbatim |
+| C2b | At **T0+20 s** and **T0+45 s**: same commands | Timeline still reports the call as running while `ps` still shows the process | **If `ps` shows the `sleep` but the timeline no longer shows a running Shell call, this is an early-yield provider-fidelity finding: F1 would see `none`.** Record it and continue; the following steps then show its effect |
+| C3 | **[MANAGER]** Lead chat: *"Without pausing anyone, call slp_revise_brief now: add criterion `C-F1: the 404 body has no extra fields`, reason 'F1 live test'."* | **Refused** before any shell evidence is read: *"…cannot be replaced while a stage peer may still be writing under it: `<PEER>` is not paused. Call slp_pause_peers first…"*; log `brief.revise_blocked outcome=blocked` | Reply verbatim, log row |
+| C4 | **[MANAGER]** Lead chat: *"Call slp_pause_peers for the implementation stage, reason 'F1 live test'. Report the exact tool result."* Then immediately run `ps` | The tool waits up to 30 s, then reports which peers it confirmed stopped. Log `peers.paused`; `pausedAt` set | Reply verbatim, `peers.paused` outcome and reason, `ps` output, `pausedAt` / `pauseConfirmedAt` |
+| C5 | While `ps` still shows the `sleep`: **[MANAGER]** *"Call slp_revise_brief again with the same change."* | **Refused**, naming `<PEER>` with `its shell command \`sleep 240 && echo done\` is still running` or `its session is still '<status>'` | Reply verbatim, `brief.revise_blocked` row, `ps` output |
+| C6 | Wait until `ps` shows no `sleep` **and** the timeline shows the call finished; then **[MANAGER]** *"Call slp_revise_brief again."* | **Accepted**: *"Brief revised (F1 live test)…"*; `brief.revised` with `confirmed stopped: <PEER>`; `pipeline.briefLockedAt` moves | Reply, log row, `ps` output |
+| C7 | **[MANAGER]** Peer chat: *"Call slp_stage_report with status completed now."* Then: *"Call slp_get_run."* | `slp_stage_report` **refused** as paused; `slp_get_run` works. The bus call clears `pauseConfirmedAt` (expected) | Both replies |
+| C8 | **[MANAGER]** Lead chat: *"Call slp_resume_peers."* | `peers.resumed`; peer's `pausedAt` / `pauseConfirmedAt` → null; peer receives the new criterion `C-F1` | Reply, peer's next message |
+| C9 *(optional, closes A8)* | **[MANAGER]** Lead chat: *"Ask the developer peer to raise a blocking question with slp_escalate, then relay it."* | The escalation reaches the Manager via the Supervisor | Log rows |
+
+**Decision table after C4**, using both the reply and `ps`:
+
+| `slp_pause_peers` reply | `ps` shows `sleep` | Meaning | Next |
+|---|---|---|---|
+| Not confirmed: shell `sleep …` still running | yes | F1 sees the command | C5 should refuse → C6 |
+| Not confirmed: session still `<status>` | yes | F1 refuses on session state | C5 should refuse → C6 |
+| Confirmed stopped | **no** | The interrupt ended the command | Record; C5 not exercisable after the pause (C3 still stands) → C6 |
+| Confirmed stopped | **yes** | **F1 false quiescence on Codex** | Run C5 anyway and record whether it is *accepted*. **FAIL for F1 on this provider.** Do not fix anything |
+
+### 6.3 Evidence commands (all read-only)
+
+```bash
+# Timeline and status (C2a, C2b, C4, C6)
+paseo logs "$PEER" --filter tools --tail 5
+paseo inspect "$PEER"
+# Host-level ground truth; '[s]leep' avoids matching the rg process itself
+ps -axo pid,ppid,etime,command | rg '[s]leep 240'
+
+# F1 audit trail
+sqlite3 "$SLP_DB" "select json_extract(payload,'\$.ts'), json_extract(payload,'\$.kind'), json_extract(payload,'\$.outcome'),
+                          substr(coalesce(json_extract(payload,'\$.reason'), json_extract(payload,'\$.summary')),1,240)
+                   from comm_logs where run_id='$RUN_C'
+                     and (json_extract(payload,'\$.kind') like 'brief.%' or json_extract(payload,'\$.kind') like 'peers.%')
+                   order by log_id;"
+# Expect: brief.revise_blocked (C3) → peers.paused → brief.revise_blocked (C5) → brief.revised (C6) → peers.resumed (C8)
+
+sqlite3 "$SLP_DB" "select json_extract(payload,'\$.agents.\"$PEER\".pausedAt'),
+                          json_extract(payload,'\$.agents.\"$PEER\".pauseConfirmedAt')
+                   from runs where id='$RUN_C';"
 # While unverified: pausedAt set, pauseConfirmedAt null. After resume: both null.
+
+# After the run: the peer's Codex rollout, to see whether the command yielded and was polled
+rg -l "sleep 240" ~/.codex/sessions ~/.codex/archived_sessions
+rg -c "write_stdin|session_id" <that rollout>
 ```
 
-**PASS:** unverified activity never authorizes revision; stale reports refused while paused.
+**PASS:** C3 and C5 refused; C6 accepted only after `ps` and the timeline agree that the command ended; C7
+refused while paused; C8 delivers the new criterion; no C2b early-yield finding. **FAIL:** any revision accepted
+while `ps` still shows the `sleep`. Otherwise PARTIAL, with the reason stated.
 
 Record the runtime's **actual** session status and shell observations verbatim. **Do not record or infer that a
-detached subprocess was terminated** — that is explicitly outside what this validates.
+detached subprocess was terminated** — that is explicitly outside what this validates. `ps` is only an
+observation used to judge F1. It is not something F1 claims to provide.
 
 ---
 
