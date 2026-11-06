@@ -115,6 +115,7 @@ export async function startRun(ctx: PipelineContext, input: StartRunInput) {
     criteria: null,
     masterSpec: null,
     productSpec: null,
+    specApprovals: [],
     promptConfig,
     supervisorAgentId: "",
     supervisorWorkspaceId: supervisorWorkspace.workspaceId,

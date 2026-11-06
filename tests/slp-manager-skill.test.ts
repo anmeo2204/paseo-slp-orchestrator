@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { BUS_TOOL_DEFINITIONS } from "../server/bus/tool-schemas";
 import { defaultProjectPrompts } from "../server/project-prompts/defaults";
+import { supervisorBriefing } from "../server/prompts/messages";
 import { parseRoleMarkdown } from "../server/project-prompts/markdown";
 import { slpManagerSkillFiles } from "../server/skills/slp-manager/skill-files";
 import {
@@ -164,6 +165,22 @@ describe("slp-manager project skill provisioning", () => {
     const namedToolNames = new Set(renderSlpManagerSkillMarkdown().match(/\bslp_[a-z]+(?:_[a-z]+)*\b/g) ?? []);
     const definedToolNames = new Set<string>(Object.keys(BUS_TOOL_DEFINITIONS));
     expect([...namedToolNames].filter((toolName) => !definedToolNames.has(toolName))).toEqual([]);
+  });
+
+  // A generated .slp that omits the approval step sends the Supervisor straight into a refused slp_delegate.
+  it("documents the human spec approval the engine enforces in every run mode", () => {
+    const skillMarkdown = renderSlpManagerSkillMarkdown();
+    expect(skillMarkdown).toContain("slp_submit_spec");
+    expect(skillMarkdown).toContain("no bus tool can approve a spec");
+    expect(skillMarkdown).toContain("in every run mode");
+    expect(skillMarkdown).toContain("`FULL_AUTO` included");
+    // The Supervisor's seeded workflow and its runtime briefing must teach the same handshake as the skill.
+    const supervisorWorkflow = defaultProjectPrompts().supervisor.workflow;
+    expect(supervisorWorkflow).toContain("slp_submit_spec");
+    expect(supervisorWorkflow).toContain("including FULL_AUTO");
+    expect(supervisorBriefing()).toContain("slp_submit_spec");
+    // Migration tells existing projects to add the step rather than leaving them to hit the refusal.
+    expect(skillMarkdown).toContain("add the approval step the engine now enforces");
   });
 
   it("requires a productSpec wherever the skill shows a delegation payload", () => {

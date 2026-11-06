@@ -10,6 +10,7 @@ import type { PipelineContext } from "../../server/pipeline/context";
 import { createPipeline } from "../../server/pipeline/pipeline";
 import type { QuestionTiming } from "../../server/pipeline/peer-messaging/wait-registry";
 import { startRun } from "../../server/pipeline/run-lifecycle";
+import { approveProductSpec } from "../../server/pipeline/spec-approval";
 import { createBusDispatcher } from "../../server/pipeline/tool-handlers";
 import type { AgentGateway } from "../../server/runtime/agent-gateway";
 import type { PaseoHolder } from "../../server/runtime/paseo-holder";
@@ -48,6 +49,10 @@ export interface Flow {
   pipeline(runId: string, pipelineId?: string): PipelineState | undefined;
   agentId(runId: string, role: string, stageId?: string | null): string;
   callAs(agentId: string, toolName: string, toolArguments: unknown): Promise<BusToolOutcome>;
+  // Stands in for the human pressing Approve in the plugin UI. It calls the same function the RPC handler calls,
+  // which is deliberately the only way to approve: no bus tool can reach it, so tests cannot fake authorization
+  // through an agent either.
+  approveProductSpec(runId: string, specHash: string): string;
   callAsRole(runId: string, role: string, stageId: string | null, toolName: string, toolArguments: unknown): Promise<BusToolOutcome>;
   mailTo(runId: string, agentId: string): MailboxMessage[];
   deliverMail(runId: string): Promise<number>;
@@ -161,6 +166,7 @@ export function useFlowFixture(): (options: FlowOptions) => Promise<Flow> {
       },
       agentId: (runId, role, stageId = null) => findRecord(runId, role, stageId).agentId,
       callAs: (agentId, toolName, toolArguments) => dispatcher.dispatch(callerOf(agentId), toolName, toolArguments),
+      approveProductSpec: (runId, specHash) => approveProductSpec(ctx, runId, specHash),
       callAsRole: (runId, role, stageId, toolName, toolArguments) =>
         dispatcher.dispatch(callerOf(findRecord(runId, role, stageId).agentId), toolName, toolArguments),
       mailTo: (runId, agentId) => store.require(runId).mailbox.filter((message) => message.toAgentId === agentId),

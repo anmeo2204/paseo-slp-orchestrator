@@ -5,6 +5,7 @@ import {
   approveGateRpc,
   approvePipelineGateRpc,
   approveMainRpc,
+  approveProductSpecRpc,
   dismissArchiveWarningRpc,
   getRunRpc,
   listRunsRpc,
@@ -63,6 +64,7 @@ export function useRunActions() {
   const setRunMode = useRpc(setRunModeRpc);
   const approveGate = useRpc(approveGateRpc);
   const approvePipelineGate = useRpc(approvePipelineGateRpc);
+  const approveProductSpec = useRpc(approveProductSpecRpc);
   const resumeTask = useRpc(resumeTaskRpc);
   const approveMain = useRpc(approveMainRpc);
   const abortRun = useRpc(abortRunRpc);
@@ -76,6 +78,7 @@ export function useRunActions() {
     setRunMode: useMutation({ mutationFn: setRunMode, onSuccess: refreshRuns }),
     approveGate: useMutation({ mutationFn: approveGate, onSuccess: refreshRuns }),
     approvePipelineGate: useMutation({ mutationFn: approvePipelineGate, onSuccess: refreshRuns }),
+    approveProductSpec: useMutation({ mutationFn: approveProductSpec, onSuccess: refreshRuns }),
     resumeTask: useMutation({ mutationFn: resumeTask, onSuccess: refreshRuns }),
     approveMain: useMutation({ mutationFn: approveMain, onSuccess: refreshRuns }),
     abortRun: useMutation({ mutationFn: abortRun, onSuccess: refreshRuns }),

@@ -5,6 +5,7 @@ import type { UiStyles } from "../styles";
 import { ActionButton } from "./action-button";
 import { PipelineDetail } from "./pipeline-detail";
 import { RunControls } from "./run-controls";
+import { SpecApprovalPanel } from "./spec-approval-panel";
 import { TaskRow } from "./task-row";
 
 interface RunDetailProps {
@@ -63,6 +64,15 @@ export function RunDetail({ styles, theme, selectedRunId, onOpenSupervisor }: Ru
           <Text style={styles.fieldLabel}>Acceptance criteria</Text>
           <Text style={styles.bodyText}>{selectedRun.criteria}</Text>
         </View>
+      ) : null}
+      {/* Spec approval sits above the pipeline view because delegation cannot start until the human approves here. */}
+      {!isLegacyRun ? (
+        <SpecApprovalPanel
+          styles={styles}
+          theme={theme}
+          runId={selectedRun.id}
+          specApprovals={selectedRun.specApprovals}
+        />
       ) : null}
       {/* Controls receive the whole run so gate and status checks use the same snapshot as the task rows below. */}
       <RunControls

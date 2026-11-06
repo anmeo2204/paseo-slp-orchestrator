@@ -8,6 +8,7 @@ import { qaLeadPreparationBriefing } from "../prompts/qa-messages";
 import type { PipelineContext } from "./context";
 import { createPipelineWorktree, openPipelineWorktree } from "./pipeline-workspaces";
 import { provisionQaWorkspace, spawnQaLead } from "./qa/qa-lead-provisioning";
+import { requireApprovedSpecs } from "./spec-approval";
 import { stageMail } from "./stage-mail";
 import { ToolError } from "./tool-error";
 
@@ -125,6 +126,10 @@ export async function delegate(
     throw new ToolError("The project was already delegated. Use slp_request_rework for changes.");
   }
   const { overallCriteria, overallProductSpec, sharedContext, tasks } = normalizeDelegationSubmission(run, rawInput);
+  // Checked before any worktree, Lead or QA agent exists, so an unapproved spec cannot leave side effects behind.
+  // Enforced in every run mode: the mode decides how autonomously the pipeline executes, not who may authorize
+  // the business requirements it executes.
+  requireApprovedSpecs(run, tasks);
   // The QA branch must exist first: feature worktrees fork from the run's integration branch, which it becomes.
   const qaWorkspace = await provisionQaWorkspace(ctx, runId);
   const provisionedLeads: Array<{

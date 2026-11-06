@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { supervisorBriefing } from "../server/prompts/messages";
 import { systemPromptFor } from "../server/prompts/system-prompts";
 import { useFlowFixture } from "./helpers/flow-fixture";
-import { SAMPLE_PRODUCT_SPEC, delegateToLead } from "./helpers/flow-steps";
+import { SAMPLE_PRODUCT_SPEC, delegateToLead, submitAndApproveSpec } from "./helpers/flow-steps";
 
 const createFlow = useFlowFixture();
 
@@ -56,6 +56,8 @@ describe("product spec phase", () => {
   it("gives each parallel Lead only its own spec while the QA Lead and run keep all of them", async () => {
     const flow = await createFlow({ mode: "FULL_AUTO" });
     const runId = await flow.startRun();
+    await submitAndApproveSpec(flow, runId, AUTH_SPEC, "auth");
+    await submitAndApproveSpec(flow, runId, CHECKOUT_SPEC, "checkout");
     const delegation = await flow.callAsRole(runId, "supervisor", null, "slp_delegate", {
       tasks: [
         { name: "auth", acceptanceCriteria: "Sign-in validates credentials.", productSpec: AUTH_SPEC },
@@ -80,8 +82,12 @@ describe("product spec phase", () => {
   it("tells the Supervisor to get explicit human approval of the spec before delegating", () => {
     const supervisorPrompt = systemPromptFor("supervisor");
     expect(supervisorPrompt).toContain("Product spec before delegation");
-    expect(supervisorPrompt).toContain("explicitly approves");
     expect(supervisorPrompt).toContain("Given <context> When <user action> Then <visible result>");
+    // The prompt must route approval through the tool the engine checks, and say that its own word is not proof.
+    expect(supervisorPrompt).toContain("slp_submit_spec");
+    expect(supervisorPrompt).toContain("press Approve");
+    expect(supervisorPrompt).toContain("including FULL_AUTO");
+    expect(supervisorPrompt).toContain("not evidence the engine can use");
   });
 
   // A spec that only enumerates screens leaves the Lead guessing and gives QA nothing to grade on non-UI work.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizePipelineRoleId, type PipelineDefinition } from "../shared/pipeline";
 import { useFlowFixture } from "./helpers/flow-fixture";
-import { DEFAULT_PIPELINE, SAMPLE_BRIEF, SAMPLE_PRODUCT_SPEC, currentStage, startedRunWithPipeline } from "./helpers/flow-steps";
+import { DEFAULT_PIPELINE, SAMPLE_BRIEF, SAMPLE_PRODUCT_SPEC, currentStage, delegateToLead, startedRunWithPipeline } from "./helpers/flow-steps";
 
 const createFlow = useFlowFixture();
 
@@ -49,10 +49,7 @@ describe("project business roles", () => {
   it("rejects a business role absent from the project's .slp snapshot", async () => {
     const flow = await createFlow({ mode: "FULL_AUTO" });
     const runId = await flow.startRun();
-    await flow.callAsRole(runId, "supervisor", null, "slp_delegate", {
-      acceptanceCriteria: "Billing import works end to end and its behavior is independently verified.",
-      productSpec: SAMPLE_PRODUCT_SPEC,
-    });
+    await delegateToLead(flow, runId);
     const response = await flow.callAsRole(runId, "master_lead", null, "slp_define_pipeline", { pipeline: {
       ...DEFAULT_PIPELINE,
       name: "unknown-role",

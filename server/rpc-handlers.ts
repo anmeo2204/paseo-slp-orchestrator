@@ -7,6 +7,7 @@ import {
   approveGateRpc,
   approvePipelineGateRpc,
   approveMainRpc,
+  approveProductSpecRpc,
   dismissArchiveWarningRpc,
   dryRunProjectRpc,
   dryRunStatusRpc,
@@ -29,6 +30,7 @@ import type { PipelineContext } from "./pipeline/context";
 import { buildPeerQuestionViews, computePeerQuestionMetrics } from "./pipeline/peer-messaging/question-metrics";
 import { abortRun, approveMain, approveRunGate, startRun } from "./pipeline/run-lifecycle";
 import { archiveRunSafely, dismissArchiveWarning, restoreRun } from "./pipeline/run-restore";
+import { approveProductSpec } from "./pipeline/spec-approval";
 import { approvePipelineGate } from "./pipeline/stage-control";
 import { assertGitRepository } from "./git/git";
 import { loadProjectPrompts } from "./project-prompts/load";
@@ -170,6 +172,13 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
   server.handle(approveGateRpc, async ({ runId, taskId }, { paseo }) => {
     ctx.holder.capture(paseo);
     return { ok: true, message: await approveRunGate(ctx, runId, taskId ?? null) };
+  });
+
+  // The only writer of an approved Product Spec record. Reachable from the plugin UI alone, which is exactly why
+  // the delegation gate can treat its result as a human decision instead of an agent's assertion.
+  server.handle(approveProductSpecRpc, ({ runId, specHash }, { paseo }) => {
+    ctx.holder.capture(paseo);
+    return { ok: true, message: approveProductSpec(ctx, runId, specHash) };
   });
 
   server.handle(approvePipelineGateRpc, async ({ runId, pipelineId }, { paseo }) => {

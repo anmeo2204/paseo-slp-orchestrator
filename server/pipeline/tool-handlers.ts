@@ -18,6 +18,7 @@ import { notifyAgent } from "./peer-messaging/notify";
 import { escalateStage, requestStageRework, submitStageReport } from "./stage-messages";
 import { handlePeerShell } from "./shell-watchdog";
 import { pauseStagePeers, resumeStagePeers } from "./peer-pause";
+import { submitProductSpec } from "./spec-approval";
 import { ToolError } from "./tool-error";
 
 type ToolInput<Name extends BusToolName> = z.output<(typeof BUS_TOOL_DEFINITIONS)[Name]["input"]>;
@@ -45,6 +46,7 @@ const TOOL_HANDLERS: { [Name in BusToolName]: ToolHandler<Name> } = {
   slp_approve_stage: (ctx, caller, input) => approveStage(ctx, caller, input),
   slp_stage_rework: (ctx, caller, input) => requestStageRework(ctx, caller, input),
   slp_escalate: (ctx, caller, input) => escalateStage(ctx, caller, input.reason),
+  slp_submit_spec: (ctx, caller, input) => submitProductSpec(ctx, caller, input),
   slp_delegate: (ctx, caller, input) => delegate(ctx, caller.runId, input),
   slp_request_rework: (ctx, caller, input) => requestRework(ctx, caller.runId, input.feedback),
   slp_relay_decision: (ctx, caller, input) => relayHumanDecision(ctx, caller.runId, input.pipelineId, input.decision),

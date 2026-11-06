@@ -140,6 +140,15 @@ export const approveGateRpc = defineRpc({
   output: z.object({ ok: z.boolean(), message: z.string() }),
 });
 
+// The human's approval of one Product Spec. This is the trusted half of the approval mechanism: it carries no agent
+// token and only the plugin UI can call it, so an `approved` record cannot be produced by any agent. The spec is
+// identified by its content hash rather than a list position, so the approval binds to the exact text on screen.
+export const approveProductSpecRpc = defineRpc({
+  name: "slp.spec.approve",
+  input: z.object({ runId: z.string(), specHash: z.string().min(1) }),
+  output: z.object({ ok: z.boolean(), message: z.string() }),
+});
+
 // Dynamic pipelines own their gates by pipeline id; this contract keeps the old task gate RPC separate for legacy snapshots.
 export const approvePipelineGateRpc = defineRpc({
   name: "slp.pipeline.approve_gate",

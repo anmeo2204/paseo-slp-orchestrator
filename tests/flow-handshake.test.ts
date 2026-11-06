@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { useFlowFixture } from "./helpers/flow-fixture";
-import { SAMPLE_BRIEF, SAMPLE_PRODUCT_SPEC, TWO_PEER_PIPELINE, approveCurrentStage, askAndAnswer, currentStage, eventually, reportPeer, startedRunWithPipeline } from "./helpers/flow-steps";
+import { SAMPLE_BRIEF, SAMPLE_PRODUCT_SPEC, TWO_PEER_PIPELINE, approveCurrentStage, askAndAnswer, currentStage, delegateToLead, eventually, reportPeer, startedRunWithPipeline, submitAndApproveSpec } from "./helpers/flow-steps";
 
 const createFlow = useFlowFixture();
 
@@ -128,6 +128,9 @@ describe("stage coordination", () => {
     const flow = await createFlow({ mode: "FULL_AUTO", orchestration: { forkPeers: true } });
     const runId = await flow.startRun();
 
+    // Every feature needs its own approved spec, so each one goes through the submit-and-approve handshake first.
+    await submitAndApproveSpec(flow, runId, SAMPLE_PRODUCT_SPEC, "auth-api");
+    await submitAndApproveSpec(flow, runId, SAMPLE_PRODUCT_SPEC, "checkout-ui");
     // Supervisor analyzes the requirement and delegates two parallel features (`auth-api` and `checkout-ui`) with shared context.
     const delegateResponse = await flow.callAsRole(runId, "supervisor", null, "slp_delegate", {
       acceptanceCriteria: "Deliver both auth-api and checkout-ui with a consistent session token contract.",
@@ -261,10 +264,7 @@ describe("stage coordination", () => {
       reviewerRole.model = "claude-opus-4-6";
       architectRole.model = "codex/gpt-5.4";
     });
-    await flow.callAsRole(runId, "supervisor", null, "slp_delegate", {
-      acceptanceCriteria: "Billing import works end to end and its behavior is independently verified.",
-      productSpec: SAMPLE_PRODUCT_SPEC,
-    });
+    await delegateToLead(flow, runId);
     const leadId = flow.run(runId).masterLeadAgentId;
     const defineResponse = await flow.callAsRole(runId, "master_lead", null, "slp_define_pipeline", {
       pipeline: { ...TWO_PEER_PIPELINE, worktree: undefined },

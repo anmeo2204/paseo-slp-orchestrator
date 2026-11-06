@@ -4,6 +4,7 @@
 import { vi } from "vitest";
 import type { PipelineDefinition, PipelineState, StageState } from "../../shared/pipeline";
 import type { BusToolOutcome } from "../../server/bus/http-mcp";
+import { productSpecHash } from "../../server/pipeline/spec-approval";
 import type { Flow } from "./flow-fixture";
 import { commitFiles, runGitSync } from "./git-fixture";
 
@@ -70,10 +71,31 @@ export const SAMPLE_PRODUCT_SPEC = [
   "Rules: totals use two decimals. Out of scope: editing invoices.",
 ].join("\n");
 
-export async function delegateToLead(flow: Flow, runId: string): Promise<void> {
+// Walks the full approval handshake the engine requires in every run mode: the Supervisor records the exact spec
+// text, the human approves it through the trusted RPC path, and only then is delegation accepted.
+export async function submitAndApproveSpec(
+  flow: Flow,
+  runId: string,
+  productSpec: string,
+  featureName?: string,
+): Promise<void> {
+  const submission = await flow.callAsRole(runId, "supervisor", null, "slp_submit_spec", {
+    productSpec,
+    ...(featureName ? { featureName } : {}),
+  });
+  if (submission.isError) throw new Error(submission.text);
+  flow.approveProductSpec(runId, productSpecHash(productSpec));
+}
+
+export async function delegateToLead(
+  flow: Flow,
+  runId: string,
+  productSpec: string = SAMPLE_PRODUCT_SPEC,
+): Promise<void> {
+  await submitAndApproveSpec(flow, runId, productSpec);
   const delegation = await flow.callAsRole(runId, "supervisor", null, "slp_delegate", {
     acceptanceCriteria: "Billing import works end to end and its behavior is independently verified.",
-    productSpec: SAMPLE_PRODUCT_SPEC,
+    productSpec,
   });
   if (delegation.isError) throw new Error(delegation.text);
 }

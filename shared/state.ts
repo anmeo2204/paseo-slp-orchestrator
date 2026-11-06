@@ -126,6 +126,27 @@ export const PipelineWorkspaceSchema = z.object({
 });
 export type PipelineWorkspace = z.infer<typeof PipelineWorkspaceSchema>;
 
+// Proof that a human approved one exact Product Spec text before it was delegated.
+// `approved` is writable only by the plugin's RPC handler, which the UI alone can reach: agents hold a bus token
+// and have no path to RPC, so a record in this state is evidence of a human action rather than an agent's claim.
+// `specHash` binds that approval to the exact bytes, so editing the text after approval invalidates it.
+export const PRODUCT_SPEC_APPROVAL_STATUSES = ["pending", "approved", "superseded"] as const;
+export const ProductSpecApprovalSchema = z.object({
+  id: z.string(),
+  // Null for a single-feature delegation, which has no per-feature name of its own.
+  featureName: z.string().nullable().default(null),
+  specHash: z.string(),
+  // Stored verbatim because approving a hash without reading the text would not be an approval at all.
+  productSpec: z.string(),
+  status: z.enum(PRODUCT_SPEC_APPROVAL_STATUSES),
+  submittedBy: z.string(),
+  submittedAt: z.string(),
+  approvedAt: z.string().nullable().default(null),
+  approvedVia: z.string().nullable().default(null),
+  supersededAt: z.string().nullable().default(null),
+});
+export type ProductSpecApproval = z.infer<typeof ProductSpecApprovalSchema>;
+
 export const RunSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -144,6 +165,9 @@ export const RunSchema = z.object({
   masterSpec: z.string().nullable().default(null),
   // Every feature's human-approved product spec, which the QA Lead turns into test scenarios.
   productSpec: z.string().nullable().default(null),
+  // Append-only approval history. Empty on runs stored before approval was recorded, which is why slp_delegate
+  // tests the submitted text against this list rather than trusting a flag on the run.
+  specApprovals: z.array(ProductSpecApprovalSchema).default([]),
   // Legacy runs retain built-in defaults; new runs snapshot all project-authored role workflows.
   promptConfig: ProjectPromptConfigSchema.nullable().default(null),
   supervisorAgentId: z.string(),

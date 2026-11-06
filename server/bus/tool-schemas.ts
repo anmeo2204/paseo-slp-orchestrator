@@ -6,6 +6,7 @@ import {
   DelegationSubmissionSchema,
   PipelineBriefSchema,
   PipelineEnvelopeSchema,
+  PRODUCT_SPEC_MIN_LENGTH,
   StageReportSubmissionSchema,
 } from "../../shared/pipeline";
 
@@ -104,11 +105,21 @@ export const BUS_TOOL_DEFINITIONS = {
     description: "Escalate a blocked stage or implementation decision to the Lead.",
     input: z.object({ reason: z.string().trim().min(1) }),
   },
+  // The Supervisor records the exact spec text it wants approved; the human then approves it in the SLP
+  // Orchestrator UI. No bus tool can approve a spec, which is what makes the approval a human decision.
+  slp_submit_spec: {
+    roles: ["supervisor"],
+    description: "Submit the exact Product Spec text for one feature for human approval, then present it in chat, tell the human to press Approve in SLP Orchestrator, and end your turn. Re-submitting a changed text for the same feature supersedes the earlier approval. Required in every run mode before slp_delegate accepts that feature.",
+    input: z.object({
+      featureName: z.string().trim().min(1).optional().describe("Feature name, matching the task name you will delegate; omit for a single-feature delegation"),
+      productSpec: z.string().trim().min(PRODUCT_SPEC_MIN_LENGTH),
+    }),
+  },
   // Supervisor lifecycle tools stay separate from stage coordination so only the Supervisor can
   // decompose features into Lead worktrees and communicate acceptance decisions to the human manager.
   slp_delegate: {
     roles: ["supervisor"],
-    description: "Delegate 1 or N parallel features/tasks to dedicated Lead agents in isolated worktrees with full cross-Lead awareness. Every feature needs the human-approved productSpec (scope, observable behaviors, surfaces and states, business rules and edge cases, Given/When/Then scenarios, assumptions).",
+    description: "Delegate 1 or N parallel features/tasks to dedicated Lead agents in isolated worktrees with full cross-Lead awareness. Every feature needs the human-approved productSpec (scope, observable behaviors, surfaces and states, business rules and edge cases, Given/When/Then scenarios, assumptions), submitted beforehand with slp_submit_spec and approved by the human: this is refused in every run mode if the text you pass is not the approved text.",
     input: DelegationSubmissionSchema,
   },
   slp_request_rework: {
