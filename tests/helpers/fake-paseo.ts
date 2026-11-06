@@ -1,7 +1,8 @@
 // Stub of the Paseo SDK surface used by the pipeline (workspaces + agent timeline) and of the
 // holder that hands it out. Worktrees are REAL `git worktree add` directories so the scope gate
 // can run `git diff` against them.
-import { join } from "node:path";
+import { realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { PaseoApi } from "../../server/runtime/paseo-holder";
 import { runGitSync } from "./git-fixture";
 
@@ -21,6 +22,9 @@ export class FakePaseo {
   readonly archivedWorkspaceIds: string[] = [];
   readonly timelineAppends: TimelineAppendCall[] = [];
   private workspaceCounter = 0;
+  private openedWorkspaceCounter = 0;
+  // Keyed by canonical path: Paseo identifies a workspace by the checkout it owns, and the pipeline resolves
+  // every path with realpath before opening one (validateCheckout), so the key has to be resolved too.
   private readonly workspaceIdByDirectory = new Map<string, string>();
 
   constructor(private readonly worktreeRootDirectory: string) {}
@@ -32,9 +36,7 @@ export class FakePaseo {
       workspaces: {
         open: async (repoPath: string) => {
           fakePaseo.openedRepositories.push(repoPath);
-          const workspaceId = fakePaseo.workspaceIdByDirectory.get(repoPath) ?? "ws-supervisor";
-          fakePaseo.workspaceIdByDirectory.set(repoPath, workspaceId);
-          return fakePaseo.buildHandle(workspaceId, repoPath);
+          return fakePaseo.openWorkspaceForDirectory(repoPath);
         },
         create: async (request: WorkspaceCreateRequest) => fakePaseo.createWorktreeWorkspace(request),
         ref: (workspaceId: string) => fakePaseo.buildHandle(workspaceId, null),
@@ -59,6 +61,30 @@ export class FakePaseo {
     return this.timelineAppends.filter((append) => append.item.id === `task-${taskId}`).map((append) => append.item.data);
   }
 
+  // A temp directory can be reached by more than one path (macOS resolves /var to /private/var), so a workspace
+  // registered under the path used to create it must still be found under the resolved path the pipeline opens.
+  private static canonicalDirectory(directory: string): string {
+    try {
+      return realpathSync(directory);
+    } catch {
+      // An archived or not-yet-created checkout cannot be resolved; its lexical path is the best key available.
+      return resolve(directory);
+    }
+  }
+
+  // Paseo returns the workspace that owns the given checkout, creating one for a checkout it does not track yet.
+  // An unknown directory must therefore get its own identity: handing back the Supervisor's workspace instead
+  // would let a feature worktree silently inherit the Supervisor's workspace id.
+  private openWorkspaceForDirectory(directory: string) {
+    const canonicalDirectory = FakePaseo.canonicalDirectory(directory);
+    const knownWorkspaceId = this.workspaceIdByDirectory.get(canonicalDirectory);
+    if (knownWorkspaceId) return this.buildHandle(knownWorkspaceId, directory);
+    this.openedWorkspaceCounter += 1;
+    const openedWorkspaceId = `ws-open-${this.openedWorkspaceCounter}`;
+    this.workspaceIdByDirectory.set(canonicalDirectory, openedWorkspaceId);
+    return this.buildHandle(openedWorkspaceId, directory);
+  }
+
   private buildHandle(workspaceId: string, directory: string | null) {
     // Matches the real handle: `directory` can be null until refresh, which is why the pipeline always refreshes first.
     return { id: workspaceId, directory, refresh: async () => undefined };
@@ -70,7 +96,8 @@ export class FakePaseo {
     const directory = join(this.worktreeRootDirectory, `worktree-${this.workspaceCounter}`);
     // same call Paseo makes for action "branch-off": a new branch cut from refName
     runGitSync(request.source.cwd, ["worktree", "add", "-b", request.source.branchName, directory, request.source.refName]);
-    this.workspaceIdByDirectory.set(directory, workspaceId);
+    // Registered under the canonical path so the later open() of this same checkout resolves to this workspace.
+    this.workspaceIdByDirectory.set(FakePaseo.canonicalDirectory(directory), workspaceId);
     this.createdWorkspaces.push({ request, workspaceId, directory });
     return this.buildHandle(workspaceId, directory);
   }

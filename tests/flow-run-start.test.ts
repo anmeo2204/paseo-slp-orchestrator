@@ -38,6 +38,9 @@ describe("dynamic pipeline startup", () => {
     const leadSpec = flow.gateway.createdAgents.find(({ record }) => record.role === "master_lead")?.spec;
     expect(supervisorSpec?.workspaceId).toBe(delegatedRun.supervisorWorkspaceId);
     expect(leadSpec?.workspaceId).not.toBe(delegatedRun.supervisorWorkspaceId);
+    // Inequality alone would also hold for an id that belongs to nothing, so pin the Lead to the worktree
+    // workspace Paseo actually created for it.
+    expect(flow.paseo.createdWorkspaces.map((workspace) => workspace.workspaceId)).toContain(leadSpec?.workspaceId);
     expect(delegatedRun.agents[delegatedRun.masterLeadAgentId].worktreePath).toBeTruthy();
     expect(flow.gateway.createdAgents.every(({ spec }) => spec.pipelineId == null && spec.stageId == null)).toBe(true);
     expect(flow.mailTo(runId, delegatedRun.masterLeadAgentId).at(-1)?.text).toContain("slp_define_pipeline");
@@ -58,6 +61,8 @@ describe("dynamic pipeline startup", () => {
     expect(stage.forkedLeadAgentId).toBe(run.masterLeadAgentId);
     expect(pipeline.leadAgentId).toBe(run.masterLeadAgentId);
     expect(pipeline.workspaceId).not.toBe(run.supervisorWorkspaceId);
+    // The pipeline must run in a worktree workspace Paseo created, not merely in "some other" workspace id.
+    expect(flow.paseo.createdWorkspaces.map((workspace) => workspace.workspaceId)).toContain(pipeline.workspaceId);
     for (const peerAgentId of stage.peerAgentIds) {
       const peerCreationSpec = flow.gateway.createdAgents.find(({ record }) => record.agentId === peerAgentId)?.spec;
       expect(peerCreationSpec?.workspaceId).toBe(pipeline.workspaceId);
