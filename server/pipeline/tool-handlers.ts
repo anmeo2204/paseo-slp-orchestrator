@@ -50,7 +50,7 @@ const TOOL_HANDLERS: { [Name in BusToolName]: ToolHandler<Name> } = {
   slp_delegate: (ctx, caller, input) => delegate(ctx, caller.runId, input),
   slp_request_rework: (ctx, caller, input) => requestRework(ctx, caller.runId, input.feedback),
   slp_relay_decision: (ctx, caller, input) => relayHumanDecision(ctx, caller.runId, input.pipelineId, input.decision),
-  slp_present_to_manager: (ctx, caller, input) => presentToManager(ctx, caller.runId, input.report),
+  slp_present_to_manager: (ctx, caller, input) => presentToManager(ctx, caller.runId, input.report, caller.agentId),
   slp_report: (ctx, caller, input) => report(ctx, caller.runId, input.summary, caller.agentId),
   slp_revive_agent: (ctx, caller, input) => reviveAgentsOnDemand(ctx, caller, input),
   slp_handle_peer_shell: (ctx, caller, input) => handlePeerShell(ctx, caller, input),
@@ -100,7 +100,8 @@ export function createBusDispatcher(ctx: PipelineContext): BusTransportDeps {
       const logCall = (outcome: "delivered" | "blocked" | "error", reason?: string) => {
         const argumentsText = JSON.stringify(rawArguments ?? {});
         ctx.logEvent(caller.runId, { taskId: null, from: `${caller.role}:${caller.agentId.slice(0, 8)}`,
-          to: "pipeline", kind: toolName, summary: `${toolName} ${argumentsText.slice(0, 240)}`, outcome, reason: reason ?? null });
+          to: "pipeline", kind: toolName, summary: `${toolName} ${argumentsText.slice(0, 240)}`, outcome, reason: reason ?? null,
+          actor: "agent", triggeredBy: caller.agentId });
       };
       try {
         const lookup = ctx.store.findAgent(caller.agentId);

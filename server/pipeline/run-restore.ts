@@ -2,12 +2,14 @@
 import { awaitsLeadRecovery } from "../../shared/pipeline";
 import { existsSync } from "node:fs";
 import { ROLE_LABELS } from "../../shared/roles";
+import { abortRunRpc, restoreRunRpc } from "../../shared/rpc";
 import type { Run, RunStatus } from "../../shared/state";
 import { configureLocalOnlyPipelineBranch, localBranchExists, runGit } from "../git/git";
 import { openSupervisorWorkspace } from "../git/worktree";
 import { delegationMessage, reportForSupervisor, supervisorBriefing } from "../prompts/messages";
 import { archiveAgentSubtree } from "./agent-hierarchy";
 import { reviveMasterLead } from "./agent-revival";
+import { originLogFields, rpcOrigin } from "./action-origin";
 import { archiveAgentLogged, type PipelineContext } from "./context";
 import { recoverPipelines } from "./stage-engine";
 import { stageMail } from "./stage-mail";
@@ -161,7 +163,8 @@ export async function archiveRunSafely(ctx: PipelineContext, runId: string): Pro
   }
   ctx.logEvent(runId, {
     taskId: null,
-    from: "manager",
+    // Reached only through slp.run.abort with archiveOnly.
+    ...originLogFields(rpcOrigin(abortRunRpc.name)),
     to: "pipeline",
     kind: "run.archived",
     summary: "Run archived with worktrees preserved for later restoration",
@@ -448,7 +451,7 @@ export async function restoreRun(ctx: PipelineContext, runId: string): Promise<R
 
   ctx.logEvent(runId, {
     taskId: null,
-    from: "manager",
+    ...originLogFields(rpcOrigin(restoreRunRpc.name)),
     to: activeSupervisorAgentId,
     kind: "run.restored",
     summary: `Restored SLP run '${initialRun.title}' to status '${restoredRunStatus}'`,

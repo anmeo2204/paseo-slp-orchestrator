@@ -8,7 +8,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { BusCaller } from "../bus/http-mcp";
 import type { DelegatedFeature } from "../../shared/pipeline";
+import { approveProductSpecRpc } from "../../shared/rpc";
 import type { ProductSpecApproval, Run } from "../../shared/state";
+import { originLogFields, rpcOrigin } from "./action-origin";
 import type { PipelineContext } from "./context";
 import { ToolError } from "./tool-error";
 
@@ -158,8 +160,8 @@ export function approveProductSpec(ctx: PipelineContext, runId: string, specHash
     return targetApproval;
   });
   ctx.logEvent(runId, {
-    taskId: null, from: "manager", to: "pipeline", kind: "spec.approved",
-    summary: `Human approved the Product Spec for ${approvedApproval.featureName ?? "this feature"} (sha256 ${specHash.slice(0, 12)})`,
+    taskId: null, ...originLogFields(rpcOrigin(approveProductSpecRpc.name)), to: "pipeline", kind: "spec.approved",
+    summary: `Approved via the spec approval RPC: the Product Spec for ${approvedApproval.featureName ?? "this feature"} (sha256 ${specHash.slice(0, 12)})`,
     outcome: "delivered",
   });
   return `Approved the Product Spec for ${approvedApproval.featureName ?? "this feature"}. The Supervisor can now delegate it.`;

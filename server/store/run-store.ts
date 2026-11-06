@@ -87,7 +87,7 @@ export class RunStore {
   }
 
   appendLog(input: CommLogInput): void {
-    const logEntry = { ts: new Date().toISOString(), reason: null, durationMs: null, ...input };
+    const logEntry = { ts: new Date().toISOString(), reason: null, durationMs: null, actor: null, triggeredBy: null, ...input };
     this.database().prepare("INSERT INTO comm_logs(run_id, ts, payload) VALUES (?, ?, ?)")
       .run(logEntry.runId, logEntry.ts, JSON.stringify(logEntry));
   }

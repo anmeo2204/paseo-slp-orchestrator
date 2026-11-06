@@ -18,6 +18,8 @@ import {
   handleAgentArchived,
   handleSupervisorArchived,
 } from "./agent-hierarchy";
+import { abortRunRpc, approveGateRpc, startRunRpc } from "../../shared/rpc";
+import { originLogFields, rpcOrigin, type ActionOrigin } from "./action-origin";
 import { archiveAgentLogged, type PipelineContext } from "./context";
 import { ToolError } from "./tool-error";
 import { stageMail } from "./stage-mail";
@@ -158,7 +160,7 @@ export async function startRun(ctx: PipelineContext, input: StartRunInput) {
   });
   // Prompt only the Supervisor at startup so no idle Master Lead session clutters the workspace before delegation.
   await ctx.gateway.prompt(supervisor.agentId, supervisorBriefing());
-  ctx.logEvent(runId, { taskId: null, from: "manager", to: supervisor.agentId, kind: "run.started", summary: `${runMetadata.title} (${input.mode})`, outcome: "info" });
+  ctx.logEvent(runId, { taskId: null, ...originLogFields(rpcOrigin(startRunRpc.name)), to: supervisor.agentId, kind: "run.started", summary: `${runMetadata.title} (${input.mode})`, outcome: "info" });
   return { runId, supervisorAgentId: supervisor.agentId, supervisorWorkspaceId: supervisorWorkspace.workspaceId };
 }
 
@@ -261,7 +263,7 @@ function requestQaRework(ctx: PipelineContext, runId: string, feedback: string):
   return "Sent back to the QA Lead. End your turn while it defines fix and re-verification stages.";
 }
 
-export async function presentToManager(ctx: PipelineContext, runId: string, assessment: string): Promise<string> {
+export async function presentToManager(ctx: PipelineContext, runId: string, assessment: string, supervisorAgentId: string): Promise<string> {
   const run = ctx.store.require(runId);
   if (run.status !== "reporting") throw new ToolError("There is no Master Lead report to present yet.");
   ctx.store.mutate(runId, (mutableRun) => {
@@ -279,7 +281,8 @@ export async function presentToManager(ctx: PipelineContext, runId: string, asse
   });
   // Autonomous SLP runs merge the verified integration branch directly into baseBranch when the Supervisor accepts the result.
   try {
-    const mergeSummary = await approveMain(ctx, runId);
+    // No human acted here: the engine merges because the Supervisor called slp_present_to_manager.
+    const mergeSummary = await approveMain(ctx, runId, { kind: "engine", triggeredBy: supervisorAgentId });
     return `${mergeSummary}. Result presented and merged into ${run.baseBranch}. Give the Supreme Manager your short Vietnamese report in chat, then end your turn.`;
   } catch (autoMergeError) {
     const failureNote = autoMergeError instanceof Error ? autoMergeError.message : String(autoMergeError);
@@ -303,7 +306,7 @@ async function retireRunResources(ctx: PipelineContext, runId: string): Promise<
   await archiveOwnedWorkspaces(ctx, ctx.store.require(runId));
 }
 
-export async function approveMain(ctx: PipelineContext, runId: string): Promise<string> {
+export async function approveMain(ctx: PipelineContext, runId: string, origin: ActionOrigin): Promise<string> {
   const run = ctx.store.require(runId);
   if (run.status === "completed") {
     return `Already merged ${run.integrationBranch} into ${run.baseBranch}`;
@@ -323,7 +326,11 @@ export async function approveMain(ctx: PipelineContext, runId: string): Promise<
       agent.awaitingSince = null;
     }
   });
-  ctx.logEvent(runId, { taskId: null, from: "manager", to: run.baseBranch, kind: "run.merged_to_base", summary: mergeCommit, outcome: "delivered" });
+  ctx.logEvent(runId, {
+    taskId: null, ...originLogFields(origin), to: run.baseBranch, kind: "run.merged_to_base",
+    summary: origin.kind === "engine" ? `${mergeCommit} (FULL_AUTO auto-merge after slp_present_to_manager)` : mergeCommit,
+    outcome: "delivered",
+  });
   await retireRunResources(ctx, runId);
   // The QA worktree and branch are gone now; point integration back at the base checkout for any later cycle.
   ctx.store.mutate(runId, (mutableRun) => {
@@ -340,7 +347,7 @@ export async function approveRunGate(ctx: PipelineContext, runId: string, taskId
   if (taskId || run.gate?.kind !== "final_approval") {
     throw new ToolError("This run uses dynamic pipeline gates; approve the pipeline gate or final run approval from its matching control.");
   }
-  return approveMain(ctx, runId);
+  return approveMain(ctx, runId, rpcOrigin(approveGateRpc.name));
 }
 
 export async function abortRun(ctx: PipelineContext, runId: string): Promise<void> {
@@ -365,5 +372,5 @@ export async function abortRun(ctx: PipelineContext, runId: string): Promise<voi
     }
   }
   await archiveOwnedWorkspaces(ctx, ctx.store.require(runId));
-  ctx.logEvent(runId, { taskId: null, from: "manager", to: "pipeline", kind: "run.aborted", summary: "aborted by the Supreme Manager", outcome: "info" });
+  ctx.logEvent(runId, { taskId: null, ...originLogFields(rpcOrigin(abortRunRpc.name)), to: "pipeline", kind: "run.aborted", summary: "aborted via the abort RPC", outcome: "info" });
 }

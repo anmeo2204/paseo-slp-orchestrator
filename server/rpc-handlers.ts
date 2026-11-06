@@ -28,6 +28,7 @@ import {
 import type { Run } from "../shared/state";
 import type { PipelineContext } from "./pipeline/context";
 import { buildPeerQuestionViews, computePeerQuestionMetrics } from "./pipeline/peer-messaging/question-metrics";
+import { originLogFields, rpcOrigin } from "./pipeline/action-origin";
 import { abortRun, approveMain, approveRunGate, startRun } from "./pipeline/run-lifecycle";
 import { archiveRunSafely, dismissArchiveWarning, restoreRun } from "./pipeline/run-restore";
 import { approveProductSpec } from "./pipeline/spec-approval";
@@ -165,7 +166,7 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
     ctx.store.mutate(runId, (run) => {
       run.mode = mode;
     });
-    ctx.logEvent(runId, { taskId: null, from: "manager", to: "pipeline", kind: "run.mode_changed", summary: mode, outcome: "info" });
+    ctx.logEvent(runId, { taskId: null, ...originLogFields(rpcOrigin(setRunModeRpc.name)), to: "pipeline", kind: "run.mode_changed", summary: mode, outcome: "info" });
     return { ok: true };
   });
 
@@ -194,7 +195,7 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
 
   server.handle(approveMainRpc, async ({ runId }, { paseo }) => {
     ctx.holder.capture(paseo);
-    return { ok: true, message: await approveMain(ctx, runId) };
+    return { ok: true, message: await approveMain(ctx, runId, rpcOrigin(approveMainRpc.name)) };
   });
 
   // Aborting or archiving closes agents through the SDK, so the holder must be populated first.

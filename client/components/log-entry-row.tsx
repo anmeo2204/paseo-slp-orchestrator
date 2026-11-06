@@ -51,6 +51,12 @@ export function LogEntryRow({ styles, theme, logEntry }: LogEntryRowProps) {
         >
           {logEntry.outcome.toUpperCase()}
         </Text>
+        {logEntry.actor === "rpc" || logEntry.actor === "engine" ? (
+          // An RPC row is any local daemon client, not a verified human, so the label must not read as "Manager".
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>{logEntry.actor === "rpc" ? "UI/RPC (unauthenticated)" : "engine"}</Text>
+          </View>
+        ) : null}
         {logEntry.taskId ? (
           <View style={styles.chip}>
             <Text style={styles.chipText}>{logEntry.taskId}</Text>

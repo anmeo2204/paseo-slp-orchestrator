@@ -213,6 +213,12 @@ export const StateFileSchema = z.object({
 });
 export type StateFile = z.infer<typeof StateFileSchema>;
 
+// Who caused an audited action. "rpc" is an unauthenticated plugin RPC client: the daemon admits every local client
+// as the same principal, so it may be the Manager's UI or any same-user process, and is never recorded as a verified
+// human. "engine" is the orchestrator acting on its own (e.g. the FULL_AUTO merge); "agent" is a bus tool call.
+export const CommLogActorSchema = z.enum(["rpc", "engine", "agent"]);
+export type CommLogActor = z.infer<typeof CommLogActorSchema>;
+
 // Audit entries share one SQLite database with the run they describe.
 export const CommLogEntrySchema = z.object({
   ts: z.string(),
@@ -226,5 +232,9 @@ export const CommLogEntrySchema = z.object({
   // Nullable with defaults so log lines written before these fields existed still validate when tailed.
   reason: z.string().nullable().default(null),
   durationMs: z.number().nullable().default(null),
+  // Null on rows written before attribution existed; their `from: "manager"` was not verified either.
+  actor: CommLogActorSchema.nullable().default(null),
+  // The agent whose tool call led to an engine action, so an automatic merge traces back to its trigger.
+  triggeredBy: z.string().nullable().default(null),
 });
 export type CommLogEntry = z.infer<typeof CommLogEntrySchema>;

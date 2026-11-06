@@ -25,9 +25,12 @@ export function createPipeline(dependencies: PipelineDependencies): PipelineCont
   // Audit failures must not undo a successful state transition, but missing runs are ignored
   // because shutdown can race a final lifecycle callback.
   const logEvent: PipelineContext["logEvent"] = (runId, entry) => {
-    if (!dependencies.store.find(runId)) return;
+    const run = dependencies.store.find(runId);
+    if (!run) return;
+    // An entry sent from a persisted agent of this run is that agent's action; anything else keeps its explicit actor.
+    const actor = entry.actor ?? (Object.hasOwn(run.agents, entry.from) ? "agent" : null);
     try {
-      dependencies.store.appendLog({ ...entry, runId });
+      dependencies.store.appendLog({ ...entry, actor, runId });
     } catch (logError) {
       console.error("[slp] SQLite audit append failed", logError);
     }

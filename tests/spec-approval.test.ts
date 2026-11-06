@@ -239,9 +239,9 @@ describe("product spec approval gate", () => {
     const auditEntries = flow.store.tailLog(runId, 200);
     const submissionEntry = auditEntries.find((entry) => entry.kind === "spec.submitted");
     const approvalEntry = auditEntries.find((entry) => entry.kind === "spec.approved");
-    // The submission is attributed to the Supervisor, the approval to the human: they are different acts.
-    expect(submissionEntry?.from).toBe(flow.run(runId).supervisorAgentId);
-    expect(approvalEntry?.from).toBe("manager");
+    // The submission is the Supervisor's act; the approval came through the RPC, which cannot prove a human sent it.
+    expect(submissionEntry).toMatchObject({ from: flow.run(runId).supervisorAgentId, actor: "agent" });
+    expect(approvalEntry).toMatchObject({ from: "rpc:slp.spec.approve", actor: "rpc" });
     expect(approvalEntry?.summary).toContain(productSpecHash(SAMPLE_PRODUCT_SPEC).slice(0, 12));
   });
 });
