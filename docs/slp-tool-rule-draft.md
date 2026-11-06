@@ -1,6 +1,6 @@
 # Nháp luật chung cho Kiro, Cursor và Antigravity
 
-Bản thảo để sửa câu chữ. Chưa sinh vào repo đích, chưa gắn vào `systemPromptFor`, chưa cập nhật skill `slp-manager`.
+Bản thảo để sửa câu chữ. Chưa sinh vào repo đích, chưa gắn vào `systemPromptFor`, chưa cập nhật skill `slp-manager`. Lý do của các câu cấm nằm ở [spec-authoring.md](spec-authoring.md).
 
 Khi chốt, skill init sẽ ghi bốn file sau vào repo đang chạy SLP:
 
@@ -33,7 +33,7 @@ Do not open a second spec, plan, or task list. Do not create or continue `.kiro/
 ## Stay in the assigned role
 
 - Supervisor: keep the product spec in the chat with the human. Do not write spec files into the repository.
-- Lead: record the brief only through `slp_define_pipeline`, `slp_approve_stage`, or `slp_revise_brief`. Do not write production code.
+- Lead: put the technical design in the brief `approach` (architecture, data, contracts, failure behavior) and record that brief only through `slp_define_pipeline`, `slp_approve_stage`, or `slp_revise_brief`. Do not write production code. Do not write a separate design document.
 - Developer: change code only to satisfy the locked brief, in the pipeline worktree.
 - Advisor and QA: read and report. Do not change code.
 

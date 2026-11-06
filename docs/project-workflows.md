@@ -17,7 +17,7 @@ Selecting a repository in SLP Orchestrator (SLP or Skills tab) prepares `.slp/` 
 
 Existing files are never overwritten. When `.slp/` already has roles, only a missing `QA_LEAD.md` is added. Role discovery reads the three root files and every `.md` file under `.slp/peers/` (recursively). Other files and folders such as `.slp/standards/` are ignored by the parser, but agents read them from disk. Role IDs come from the YAML `role` field, independently of filenames.
 
-Starting a run does not install the `slp-manager` skill, create `.slp/standards/TEST_POLICY.md` or generate stack-specific roles. Use **Skills → Init skill slp-manager** and a regular coding agent for that.
+Starting a run does not install the `slp-manager` skill, create `.slp/standards/TEST_POLICY.md` or generate stack-specific roles. Use **Skills → Init skill slp-manager** and a regular coding agent for that. During a run the Supervisor drafts the product spec from the `# Workflow` body of `SUPERVISOR.md`, and the Lead writes the locked brief from `LEAD.md`. The engine injects those bodies as the system prompt. `slp-manager` is not consulted for either document. See [spec authoring](spec-authoring.md).
 
 ## File format
 

@@ -10,7 +10,7 @@ Bạn chỉ trò chuyện với **Supervisor**. Supervisor viết Product Spec c
 
 1. [Kiến trúc & 4 vai trò runtime](#1-kiến-trúc--4-vai-trò-runtime)
 2. [Nguyên lý hoạt động cốt lõi](#2-nguyên-lý-hoạt-động-cốt-lõi)
-3. [Vòng đời một Run](#3-vòng-đời-một-run)
+3. [Vòng đời một Run](#3-vòng-đời-một-run) — spec viết từ file nào, so với spec của Kiro
 4. [Giao tiếp giữa các agent & quy tắc chống over-engineering](#4-giao-tiếp-giữa-các-agent--quy-tắc-chống-over-engineering)
 5. [Cấu hình](#5-cấu-hình)
 6. [Tạo bộ role cho từng dự án bằng skill `slp-manager`](#6-tạo-bộ-role-cho-từng-dự-án-bằng-skill-slp-manager)
@@ -149,8 +149,8 @@ sequenceDiagram
    - Chỉ **Supervisor** được tạo, trong checkout chính của repo. Chưa có Lead, chưa có worktree nào. Paseo mở khung chat của Supervisor.
 
 2. **Product Spec & delegate (`delegating → planning`)**
-   - Supervisor đọc repo (chỉ đọc), soạn Product Spec 5 phần trong chat: màn hình/bề mặt, trạng thái, kịch bản Given/When/Then, quy tắc nghiệp vụ, ngoài phạm vi.
-   - Khi bạn duyệt, Supervisor gọi `slp_delegate`, dạng một feature `{ acceptanceCriteria, productSpec }` hoặc nhiều feature song song `{ tasks: [{ name, acceptanceCriteria, productSpec }], sharedContext? }`. Engine bắt buộc mỗi feature có `productSpec` dài ít nhất 80 ký tự.
+   - Supervisor đọc repo (chỉ đọc), soạn Product Spec 5 phần trong chat: màn hình/bề mặt, trạng thái, kịch bản Given/When/Then, quy tắc nghiệp vụ, ngoài phạm vi. Cách soạn nằm trong thân `.slp/SUPERVISOR.md`, được gắn nguyên văn vào system prompt. Run không gọi skill `slp-manager` ở bước này.
+   - Khi bạn duyệt, Supervisor gọi `slp_delegate`, dạng một feature `{ acceptanceCriteria, productSpec }` hoặc nhiều feature song song `{ tasks: [{ name, acceptanceCriteria, productSpec }], sharedContext? }`. Engine bắt buộc mỗi feature có `productSpec` dài ít nhất 80 ký tự. Bản đã duyệt nằm trong SQLite, không thành file spec trong repo.
    - Engine tạo **QA worktree** (nhánh `qa-cycle-N`). Nhánh này trở thành `integrationBranch` của Run. Sau đó engine tạo **mỗi feature một Lead** trong worktree riêng, tách từ nhánh QA, và tạo **QA Lead** trong QA worktree. Mỗi Lead nhận danh sách Lead anh em và QA Lead.
 
 3. **Lead định nghĩa pipeline (`planning → running`)**
@@ -179,6 +179,17 @@ sequenceDiagram
    - QA Lead định nghĩa pipeline chỉ gồm Stage `verify`, không truyền `worktree`, chạy ngay trên QA worktree. Mỗi Stage có ít nhất một Peer `qa` và tối đa một Peer `developer` để sửa lỗi.
    - QA Peer nộp `scorecard` cho từng tiêu chí. QA Lead duyệt Stage, hoặc gửi lỗi cho developer bằng `slp_stage_rework`.
    - Sau Stage cuối: `slp_finalize_pipeline` đóng pipeline QA (không merge), rồi `slp_report`. Engine chỉ chấp nhận `slp_report` khi đã có một pipeline QA đóng **sau** lần merge feature cuối cùng.
+
+### Spec viết từ file nào
+
+| Việc | File quyết định cách viết | Ai viết lúc chạy | Kết quả |
+| :--- | :--- | :--- | :--- |
+| Product spec | `.slp/SUPERVISOR.md` | Supervisor, với bạn, trong chat | `productSpec` trên run |
+| Brief kỹ thuật | `.slp/LEAD.md` | Lead | Brief khóa trên pipeline. `approach` là thiết kế kỹ thuật |
+
+Skill `slp-manager` dùng trước run, để soạn và sửa các file `.slp/`. Supervisor không mở skill đó để viết spec.
+
+Kiro, Cursor và Antigravity vẫn mang workflow riêng của CLI (spec ba file của Kiro, plan mode của Cursor, plan artifact của Antigravity). Prompt SLP được gắn thêm, không tắt các workflow đó. Hợp đồng của run vẫn là product spec và brief trong SQLite. So sánh và phần không mang từ Kiro sang: [docs/spec-authoring.md](docs/spec-authoring.md). Bản nháp luật chung cho ba CLI: [docs/slp-tool-rule-draft.md](docs/slp-tool-rule-draft.md).
 
 9. **Nghiệm thu (`reporting → awaiting_user → completed`)**
    - Supervisor tự kiểm tra (đọc pipeline và `git diff`).
@@ -414,7 +425,7 @@ Có thể gửi nhiều pipeline một lúc bằng `{ "pipelines": [ ... ] }`.
 
 ## 6. Tạo bộ role cho từng dự án bằng skill `slp-manager`
 
-Bộ mặc định chỉ là điểm xuất phát chung. Để có role khớp stack thật (web, webapp, mobile...), hãy để một agent code thường (Claude Code, Codex...) tạo role theo skill `slp-manager`. Không dùng Supervisor của SLP cho việc này vì Supervisor bị khóa chỉ đọc.
+Bộ mặc định chỉ là điểm xuất phát chung. Để có role khớp stack thật (web, webapp, mobile...), hãy để một agent code thường (Claude Code, Codex...) tạo role theo skill `slp-manager`. Không dùng Supervisor của SLP cho việc này vì Supervisor bị khóa chỉ đọc. Skill này không viết Product Spec của một run. Spec lúc chạy do Supervisor viết theo `.slp/SUPERVISOR.md` và Lead viết theo `.slp/LEAD.md` (mục [Spec viết từ file nào](#spec-viết-từ-file-nào)).
 
 ### 6.1. Skill gồm những gì
 `SKILL.md` và 4 file tham chiếu: `references/PROJECT_INVESTIGATION.md`, `TEST_POLICY_TEMPLATE.md`, `STACK_PLAYBOOKS.md`, `PEER_TEMPLATES.md`. Skill chỉ là tài liệu. Agent đọc skill rồi tự viết file.
