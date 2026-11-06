@@ -368,7 +368,9 @@ behavioural observations:
 5. **Platform.** Validation would occur on macOS only. The F5 root cause was a macOS-specific path-resolution
    divergence, so a Linux pass remains unexercised.
 6. **Approval RPCs have no caller check** (§3.2). Any local client of the daemon can likely approve a Spec or a
-   gate; not exercised live by design.
+   gate; not exercised live by design. *Update 2026-11-07:* confirmed by code inspection of the running daemon in
+   `PHASE1_F2_TRUST_BOUNDARY_REVIEW.md`. Paseo admits every local client as `owner` and forwards no caller
+   identity to plugin RPCs. **F2 is not secured against agent shell access**, and no in-plugin fix is possible.
 
 ---
 

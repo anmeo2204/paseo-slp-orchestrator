@@ -140,9 +140,10 @@ export const approveGateRpc = defineRpc({
   output: z.object({ ok: z.boolean(), message: z.string() }),
 });
 
-// The human's approval of one Product Spec. This is the trusted half of the approval mechanism: it carries no agent
-// token and only the plugin UI can call it, so an `approved` record cannot be produced by any agent. The spec is
-// identified by its content hash rather than a list position, so the approval binds to the exact text on screen.
+// The human's approval of one Product Spec. No MCP bus tool reaches it, so an agent limited to its slp_ tools cannot
+// approve. It is not caller-authenticated: Paseo admits every local daemon client as the owner and forwards no caller
+// identity to plugin handlers, so any process running as the user can invoke it (PHASE1_F2_TRUST_BOUNDARY_REVIEW.md).
+// The spec is identified by its content hash rather than a list position, so the approval binds to the exact text on screen.
 // `approvalId` says which feature's record was approved, since two features can carry identical text; it is
 // optional so a UI build that sends only a hash still works, and the server then refuses ambiguous requests.
 export const approveProductSpecRpc = defineRpc({

@@ -174,8 +174,8 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
     return { ok: true, message: await approveRunGate(ctx, runId, taskId ?? null) };
   });
 
-  // The only writer of an approved Product Spec record. Reachable from the plugin UI alone, which is exactly why
-  // the delegation gate can treat its result as a human decision instead of an agent's assertion.
+  // The only writer of an approved Product Spec record. The handler context carries no caller identity, so this
+  // cannot tell the Manager's UI from any other local daemon client; see PHASE1_F2_TRUST_BOUNDARY_REVIEW.md.
   server.handle(approveProductSpecRpc, ({ runId, specHash, approvalId }, { paseo }) => {
     ctx.holder.capture(paseo);
     return { ok: true, message: approveProductSpec(ctx, runId, specHash, approvalId) };
