@@ -4,7 +4,7 @@
 import { vi } from "vitest";
 import type { PipelineDefinition, PipelineState, StageState } from "../../shared/pipeline";
 import type { BusToolOutcome } from "../../server/bus/http-mcp";
-import { productSpecHash } from "../../server/pipeline/spec-approval";
+import { normalizeFeatureName, productSpecHash } from "../../server/pipeline/spec-approval";
 import type { Flow } from "./flow-fixture";
 import { commitFiles, runGitSync } from "./git-fixture";
 
@@ -84,7 +84,15 @@ export async function submitAndApproveSpec(
     ...(featureName ? { featureName } : {}),
   });
   if (submission.isError) throw new Error(submission.text);
-  flow.approveProductSpec(runId, productSpecHash(productSpec));
+  const specHash = productSpecHash(productSpec);
+  // Approve the record the UI would have shown for this feature. Two features can submit identical text, so the
+  // hash alone does not identify one row; the panel passes the record id and so does this helper.
+  const pendingApproval = flow.run(runId).specApprovals.find(
+    (approval) => approval.status === "pending"
+      && approval.specHash === specHash
+      && normalizeFeatureName(approval.featureName) === normalizeFeatureName(featureName ?? null),
+  );
+  flow.approveProductSpec(runId, specHash, pendingApproval?.id);
 }
 
 // A feature with no screen, no endpoint and no user-visible surface at all: a nightly job plus its migration.

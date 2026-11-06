@@ -4,7 +4,7 @@ import type { AgentRecord, Run } from "../../shared/state";
 import { isPipelineLeadRole } from "../../shared/roles";
 import { unattendedModeForProvider } from "../project-prompts/agent-settings";
 import type { RunStore } from "../store/run-store";
-import type { ActiveShellCall, AgentLiveStatus } from "./agent-gateway";
+import type { ActiveShellCall, AgentLiveStatus, ShellActivity } from "./agent-gateway";
 import type { PaseoApi } from "./paseo-holder";
 
 // Only Claude, Codex and OpenCode support exact MCP tool preapproval in Paseo; plugin and ACP
@@ -177,12 +177,13 @@ export async function refreshMissingActiveAgent(
   }
 }
 
-// Reads the tail of an agent's timeline so the shell watchdog can track stdout/stderr progress without model tokens.
-export async function fetchActiveShellCallFromTimeline(
+// Reads the tail of an agent's timeline and propagates a read failure, so a caller that needs certainty can tell
+// "this agent is running no shell command" from "the timeline could not be read".
+async function readActiveShellCallFromTimeline(
   paseo: PaseoApi,
   agentId: string,
 ): Promise<ActiveShellCall | null> {
-  try {
+  {
     const timelinePage = await paseo.agents.ref(agentId).timeline.refetch({
       direction: "tail",
       limit: 15,
@@ -225,8 +226,37 @@ export async function fetchActiveShellCallFromTimeline(
       }
     }
     return null;
+  }
+}
+
+// Best-effort view for the shell watchdog, which only decides whether to alert a Lead about a stalled command.
+// A transient timeline read error must not fail the sweeper tick, so it reads as "no active shell" here and the
+// next sweep re-checks. Never use this to decide that an agent has stopped working: see shellActivityOf.
+export async function fetchActiveShellCallFromTimeline(
+  paseo: PaseoApi,
+  agentId: string,
+): Promise<ActiveShellCall | null> {
+  try {
+    return await readActiveShellCallFromTimeline(paseo, agentId);
   } catch {
-    // Transient timeline read errors must not fail the sweeper tick; the next sweep will re-check.
     return null;
+  }
+}
+
+// Three-valued view for safety decisions: a failed read is reported as "unknown" instead of being flattened into
+// "none", because a caller gating a destructive action must be able to refuse when it has no evidence.
+export async function fetchShellActivityFromTimeline(
+  paseo: PaseoApi,
+  agentId: string,
+): Promise<ShellActivity> {
+  try {
+    const activeShellCall = await readActiveShellCallFromTimeline(paseo, agentId);
+    return activeShellCall ? { state: "active", call: activeShellCall } : { state: "none", call: null };
+  } catch (timelineFailure) {
+    return {
+      state: "unknown",
+      call: null,
+      reason: timelineFailure instanceof Error ? timelineFailure.message : String(timelineFailure),
+    };
   }
 }

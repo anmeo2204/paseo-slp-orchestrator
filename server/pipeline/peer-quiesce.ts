@@ -30,7 +30,22 @@ export async function probePeerQuiescence(
 ): Promise<Map<string, PeerQuiescence>> {
   const quiescenceByAgentId = new Map<string, PeerQuiescence>();
   if (peerAgentIds.length === 0) return quiescenceByAgentId;
-  const liveStatuses = await ctx.gateway.liveStatuses(run.id);
+  // A directory read that fails leaves every peer unverified rather than aborting the caller, so slp_pause_peers
+  // still reports which peers it could not clear and the brief revision stays blocked.
+  const liveStatuses = await ctx.gateway.liveStatuses(run.id).catch((statusFailure) => {
+    const reason = statusFailure instanceof Error ? statusFailure.message : String(statusFailure);
+    return new Error(`the runtime status of this run could not be read (${reason})`);
+  });
+  if (liveStatuses instanceof Error) {
+    for (const peerAgentId of peerAgentIds) {
+      const peerRecord = run.agents[peerAgentId];
+      // An archived peer needs no runtime evidence: its session is closed and its stage cannot accept work.
+      quiescenceByAgentId.set(peerAgentId, !peerRecord || peerRecord.archivedAt
+        ? { agentId: peerAgentId, quiesced: true, blocker: null }
+        : { agentId: peerAgentId, quiesced: false, blocker: liveStatuses.message });
+    }
+    return quiescenceByAgentId;
+  }
   for (const peerAgentId of peerAgentIds) {
     const peerRecord = run.agents[peerAgentId];
     if (!peerRecord || peerRecord.archivedAt) {
@@ -60,15 +75,30 @@ export async function probePeerQuiescence(
       });
       continue;
     }
-    // A finished turn can still leave a shell command running, and that command is what writes files.
-    const activeShellCall = await ctx.gateway.activeShellCall(peerAgentId).catch(() => null);
-    quiescenceByAgentId.set(peerAgentId, activeShellCall
-      ? {
-          agentId: peerAgentId,
-          quiesced: false,
-          blocker: `its shell command \`${activeShellCall.command}\` is still running`,
-        }
-      : { agentId: peerAgentId, quiesced: true, blocker: null });
+    // A finished turn can still leave a shell command running, and that command is what writes files. The query
+    // is three-valued on purpose: an unanswered one must not read as an idle peer, so it blocks like a live command.
+    const shellActivity = await ctx.gateway.shellActivity(peerAgentId).catch((shellFailure) => ({
+      state: "unknown" as const,
+      call: null,
+      reason: shellFailure instanceof Error ? shellFailure.message : String(shellFailure),
+    }));
+    if (shellActivity.state === "active") {
+      quiescenceByAgentId.set(peerAgentId, {
+        agentId: peerAgentId,
+        quiesced: false,
+        blocker: `its shell command \`${shellActivity.call.command}\` is still running`,
+      });
+      continue;
+    }
+    if (shellActivity.state === "unknown") {
+      quiescenceByAgentId.set(peerAgentId, {
+        agentId: peerAgentId,
+        quiesced: false,
+        blocker: `whether it is still running a shell command could not be verified (${shellActivity.reason})`,
+      });
+      continue;
+    }
+    quiescenceByAgentId.set(peerAgentId, { agentId: peerAgentId, quiesced: true, blocker: null });
   }
   return quiescenceByAgentId;
 }

@@ -50,8 +50,9 @@ export function SpecApprovalPanel({ styles, theme, runId, specApprovals }: SpecA
             label="Approve this product spec"
             accessibilityLabel={`Approve the product spec for ${approval.featureName ?? "this feature"}`}
             disabled={approveProductSpec.isPending}
-            // The hash is what the engine matches at delegation, so the button approves the text shown above.
-            onPress={() => approveProductSpec.mutate({ runId, specHash: approval.specHash })}
+            // The hash is what the engine matches at delegation, so the button approves the text shown above; the
+            // id says which feature, which the hash cannot when two features submitted the same text.
+            onPress={() => approveProductSpec.mutate({ runId, specHash: approval.specHash, approvalId: approval.id })}
           />
         </View>
       ))}

@@ -183,6 +183,31 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).toContain("add the approval step the engine now enforces");
   });
 
+  // One approval authorizes one feature. A generated .slp that does not say so leads a Supervisor to submit a
+  // shared spec once and then hit a refusal it cannot explain on the second feature.
+  it("documents that approval is scoped to one feature, not to the spec text", () => {
+    const skillMarkdown = renderSlpManagerSkillMarkdown();
+    expect(skillMarkdown).toContain("One approval authorizes one feature");
+    expect(skillMarkdown).toContain("identical content is not identical authorization");
+    expect(skillMarkdown).toContain("that approval was given for the feature being delegated");
+    // The seeded workflow, the runtime briefing and the tool catalogue must teach the same rule.
+    expect(defaultProjectPrompts().supervisor.workflow).toContain("One approval authorizes one feature");
+    expect(supervisorBriefing()).toContain("One approval authorizes one feature");
+    expect(BUS_TOOL_DEFINITIONS.slp_submit_spec.description).toContain("one approval authorizes one feature");
+    expect(BUS_TOOL_DEFINITIONS.slp_delegate.description).toContain("not the feature that text was approved for");
+  });
+
+  // An unverifiable peer must read as unconfirmed everywhere a Lead is told what blocks a revision, or the Lead
+  // will treat the refusal as a bug and retry instead of cancelling the shell or escalating.
+  it("documents that an unreportable peer state blocks a brief revision", () => {
+    const skillMarkdown = renderSlpManagerSkillMarkdown();
+    expect(skillMarkdown).toContain("counts as unconfirmed, not as stopped");
+    expect(defaultProjectPrompts().lead.workflow).toContain("in a state the runtime cannot report");
+    expect(defaultProjectPrompts().lead.workflow).toContain("never read as a stopped peer");
+    expect(BUS_TOOL_DEFINITIONS.slp_revise_brief.description).toContain("in a state the runtime cannot report");
+    expect(BUS_TOOL_DEFINITIONS.slp_pause_peers.description).toContain("never as stopped");
+  });
+
   it("requires a productSpec wherever the skill shows a delegation payload", () => {
     // Stale examples without productSpec make every generated Supervisor prompt fail at slp_delegate.
     const delegationLines = renderSlpManagerSkillMarkdown()

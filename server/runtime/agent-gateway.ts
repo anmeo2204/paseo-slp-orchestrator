@@ -12,6 +12,7 @@ import type { RunStore } from "../store/run-store";
 import {
   defaultFeatureValuesForProvider,
   fetchActiveShellCallFromTimeline,
+  fetchShellActivityFromTimeline,
   isActiveMasterLead,
   isActiveParentCoordinator,
   isConfirmedMissingAgentError,
@@ -42,6 +43,13 @@ export interface ActiveShellCall {
   output: string;
   startedAt: string | null;
 }
+
+// Whether an agent is running a shell command, as three distinct facts rather than two. "unknown" exists because
+// a failed status read is not evidence of inactivity, and a caller gating a destructive action must refuse on it.
+export type ShellActivity =
+  | { state: "none"; call: null }
+  | { state: "active"; call: ActiveShellCall }
+  | { state: "unknown"; call: null; reason: string };
 
 
 export interface CreateAgentSpec {
@@ -303,9 +311,25 @@ export class AgentGateway {
   }
 
   // Reads the tail of an agent's timeline so the shell watchdog can track stdout/stderr progress without model tokens.
+  // Best effort: a failed read reports no active shell. Use shellActivity when absence has to be proven.
   async activeShellCall(agentId: string): Promise<ActiveShellCall | null> {
     const paseo = await this.holder.get();
     return fetchActiveShellCallFromTimeline(paseo, agentId);
+  }
+
+  // The same inspection, but a failed read is reported as "unknown" so a safety gate can refuse without evidence.
+  async shellActivity(agentId: string): Promise<ShellActivity> {
+    try {
+      const paseo = await this.holder.get();
+      return await fetchShellActivityFromTimeline(paseo, agentId);
+    } catch (holderFailure) {
+      // An unavailable Paseo handle is itself a missing answer, not a quiet agent.
+      return {
+        state: "unknown",
+        call: null,
+        reason: holderFailure instanceof Error ? holderFailure.message : String(holderFailure),
+      };
+    }
   }
 
 

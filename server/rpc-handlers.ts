@@ -176,9 +176,9 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
 
   // The only writer of an approved Product Spec record. Reachable from the plugin UI alone, which is exactly why
   // the delegation gate can treat its result as a human decision instead of an agent's assertion.
-  server.handle(approveProductSpecRpc, ({ runId, specHash }, { paseo }) => {
+  server.handle(approveProductSpecRpc, ({ runId, specHash, approvalId }, { paseo }) => {
     ctx.holder.capture(paseo);
-    return { ok: true, message: approveProductSpec(ctx, runId, specHash) };
+    return { ok: true, message: approveProductSpec(ctx, runId, specHash, approvalId) };
   });
 
   server.handle(approvePipelineGateRpc, async ({ runId, pipelineId }, { paseo }) => {

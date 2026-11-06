@@ -1,6 +1,6 @@
 // In-memory AgentGateway. It registers AgentRecords in the store exactly like the real gateway
 // (the bus authenticates callers through them) and records every call for assertions.
-import type { ActiveShellCall, AgentLiveStatus, CreateAgentSpec, TurnResult } from "../../server/runtime/agent-gateway";
+import type { ActiveShellCall, AgentLiveStatus, CreateAgentSpec, ShellActivity, TurnResult } from "../../server/runtime/agent-gateway";
 import type { RunStore } from "../../server/store/run-store";
 import type { AgentRecord } from "../../shared/state";
 import { resolveAgentSettings } from "../../server/project-prompts/agent-settings";
@@ -36,6 +36,8 @@ export class FakeAgentGateway {
   private readonly activeShellByAgentId = new Map<string, ActiveShellCall | null>();
   // Agents that finish the turn a prompt starts, which is how a peer behaves when it obeys a Lead's interrupt.
   private readonly endsTurnOnPrompt = new Set<string>();
+  private readonly shellActivityFailureByAgentId = new Map<string, { reason: string; rejects: boolean }>();
+  private liveStatusesFailure: string | null = null;
   private agentCounter = 0;
 
   constructor(private readonly store: RunStore) {}
@@ -66,6 +68,17 @@ export class FakeAgentGateway {
   setEndsTurnOnPrompt(agentId: string, endsTurn = true): void {
     if (endsTurn) this.endsTurnOnPrompt.add(agentId);
     else this.endsTurnOnPrompt.delete(agentId);
+  }
+
+  // `rejects` distinguishes the two ways a status query can fail to answer: the call throws, or it returns
+  // "unknown" because the provider timed out. Neither tells the engine the agent is idle.
+  setShellActivityFailure(agentId: string, failure: { reason: string; rejects?: boolean } | null): void {
+    if (failure) this.shellActivityFailureByAgentId.set(agentId, { rejects: false, ...failure });
+    else this.shellActivityFailureByAgentId.delete(agentId);
+  }
+
+  setLiveStatusesFailure(failure: string | null): void {
+    this.liveStatusesFailure = failure;
   }
 
   markEveryAgentIdle(): void {
@@ -145,8 +158,19 @@ export class FakeAgentGateway {
     return this.activeShellByAgentId.get(agentId) ?? null;
   }
 
+  async shellActivity(agentId: string): Promise<ShellActivity> {
+    const simulatedFailure = this.shellActivityFailureByAgentId.get(agentId);
+    // Models a provider whose timeline read fails or times out: the engine learns nothing about this agent.
+    if (simulatedFailure) {
+      if (simulatedFailure.rejects) throw new Error(simulatedFailure.reason);
+      return { state: "unknown", call: null, reason: simulatedFailure.reason };
+    }
+    const activeShellCall = this.activeShellByAgentId.get(agentId) ?? null;
+    return activeShellCall ? { state: "active", call: activeShellCall } : { state: "none", call: null };
+  }
 
   async liveStatuses(runId: string): Promise<Map<string, AgentLiveStatus>> {
+    if (this.liveStatusesFailure) throw new Error(this.liveStatusesFailure);
     const liveStatuses = new Map<string, AgentLiveStatus>();
     for (const [agentId, agentRecord] of Object.entries(this.store.require(runId).agents)) {
       liveStatuses.set(agentId, {

@@ -27,6 +27,18 @@ export function productSpecHash(productSpec: string): string {
   return createHash("sha256").update(normalizeProductSpec(productSpec), "utf8").digest("hex");
 }
 
+// A feature name identifies *which* feature the human authorized, so it is compared as an identifier rather than
+// as content: surrounding and inner whitespace and letter case are insignificant. This is the opposite of the rule
+// for the spec text above, where any edit must invalidate the approval. Returns null for the single-feature form.
+export function normalizeFeatureName(featureName: string | null | undefined): string | null {
+  return displayFeatureName(featureName)?.toLowerCase() ?? null;
+}
+
+// Collapsed for storage and messages but case-preserving, so the UI shows the name the Supervisor typed.
+function displayFeatureName(featureName: string | null | undefined): string | null {
+  return featureName?.replace(/\s+/g, " ").trim() || null;
+}
+
 export function pendingSpecApprovals(run: Run): ProductSpecApproval[] {
   return run.specApprovals.filter((approval) => approval.status === "pending");
 }
@@ -35,20 +47,25 @@ export function pendingSpecApprovals(run: Run): ProductSpecApproval[] {
 // Re-submitting for the same feature retires whatever came before, so an approval can never apply to older text.
 export function submitProductSpec(ctx: PipelineContext, caller: BusCaller, input: SubmitProductSpecInput): string {
   const productSpec = normalizeProductSpec(input.productSpec);
-  const featureName = input.featureName?.trim() || null;
+  const featureName = displayFeatureName(input.featureName);
+  const featureKey = normalizeFeatureName(featureName);
   const specHash = productSpecHash(productSpec);
   const submittedAt = new Date().toISOString();
 
   const { alreadyApproved, retiredCount } = ctx.store.mutate(caller.runId, (mutableRun) => {
     // Submitting identical text that a human already approved must not retire that approval and ask again.
+    // Scoped to this feature: another feature's approval of the same text is not this feature's approval, and
+    // treating it as one here would leave this feature with no record it could ever get approved.
     const existingApproval = mutableRun.specApprovals.find(
-      (approval) => approval.status === "approved" && approval.specHash === specHash,
+      (approval) => approval.status === "approved"
+        && approval.specHash === specHash
+        && normalizeFeatureName(approval.featureName) === featureKey,
     );
     if (existingApproval) return { alreadyApproved: true, retiredCount: 0 };
     const supersededApprovals = mutableRun.specApprovals.filter(
       (approval) =>
         approval.status !== "superseded"
-        && approval.featureName === featureName
+        && normalizeFeatureName(approval.featureName) === featureKey
         && approval.specHash !== specHash,
     );
     for (const supersededApproval of supersededApprovals) {
@@ -56,8 +73,12 @@ export function submitProductSpec(ctx: PipelineContext, caller: BusCaller, input
       supersededApproval.supersededAt = submittedAt;
     }
     // An unapproved resubmission of the same text keeps one pending row rather than growing the list every turn.
+    // Also scoped per feature: two features submitting identical text need two records, because one approval must
+    // not stand for two authorizations.
     const pendingDuplicate = mutableRun.specApprovals.find(
-      (approval) => approval.status === "pending" && approval.specHash === specHash,
+      (approval) => approval.status === "pending"
+        && approval.specHash === specHash
+        && normalizeFeatureName(approval.featureName) === featureKey,
     );
     if (!pendingDuplicate) {
       mutableRun.specApprovals.push({
@@ -98,14 +119,35 @@ export function submitProductSpec(ctx: PipelineContext, caller: BusCaller, input
   ].filter(Boolean).join(" ");
 }
 
+// Two features may legitimately carry identical spec text, so a hash can match more than one record. Picking one
+// by list order would approve a feature the human did not choose, so an ambiguous request is refused instead.
+function findApprovalToApprove(run: Run, specHash: string): ProductSpecApproval | undefined {
+  const pendingMatches = run.specApprovals.filter(
+    (approval) => approval.status === "pending" && approval.specHash === specHash,
+  );
+  if (pendingMatches.length > 1) {
+    throw new Error(
+      "More than one feature is awaiting approval of this identical Product Spec text. Reload the run so each feature can be approved separately.",
+    );
+  }
+  // Falling back to any record keeps approving an already-approved spec idempotent and still reports a superseded one.
+  return pendingMatches[0] ?? run.specApprovals.find((approval) => approval.specHash === specHash);
+}
+
 // Called only by the plugin RPC handler the UI invokes. No bus tool reaches this, which is what makes an
-// `approved` record evidence of a human decision.
-export function approveProductSpec(ctx: PipelineContext, runId: string, specHash: string): string {
+// `approved` record evidence of a human decision. `approvalId` names which record the human pressed Approve on;
+// it is optional so older UI builds that send only a hash keep working.
+export function approveProductSpec(ctx: PipelineContext, runId: string, specHash: string, approvalId?: string): string {
   const approvedAt = new Date().toISOString();
   const approvedApproval = ctx.store.mutate(runId, (mutableRun) => {
-    // Matching on the hash, not a list position, guarantees the human approved the text the UI was showing.
-    const targetApproval = mutableRun.specApprovals.find((approval) => approval.specHash === specHash);
+    const targetApproval = approvalId
+      ? mutableRun.specApprovals.find((approval) => approval.id === approvalId)
+      : findApprovalToApprove(mutableRun, specHash);
     if (!targetApproval) throw new Error("This Product Spec is no longer awaiting approval; reload the run and try again.");
+    // The hash must still match the record: that is what ties the approval to the text the UI was showing.
+    if (targetApproval.specHash !== specHash) {
+      throw new Error("This Product Spec changed after the screen was drawn; reload the run and approve the current text.");
+    }
     if (targetApproval.status === "approved") return targetApproval;
     if (targetApproval.status === "superseded") {
       throw new Error("The Supervisor replaced this Product Spec with a newer version; approve the current one instead.");
@@ -123,23 +165,53 @@ export function approveProductSpec(ctx: PipelineContext, runId: string, specHash
   return `Approved the Product Spec for ${approvedApproval.featureName ?? "this feature"}. The Supervisor can now delegate it.`;
 }
 
-function describeMissingApproval(run: Run, task: DelegatedFeature, specHash: string): string | null {
-  if (run.specApprovals.some((approval) => approval.status === "approved" && approval.specHash === specHash)) {
+// Whether an approval record was given for the feature now being delegated. A record with no feature name is the
+// single-feature form, where the submitted text *is* the whole request: it authorizes a lone task (whose name the
+// engine derives from the run title, not from the submission) but never one feature out of several, because the
+// human was never shown that split.
+function approvalCoversFeature(
+  approval: ProductSpecApproval,
+  taskFeatureKey: string | null,
+  allowUnnamedApproval: boolean,
+): boolean {
+  const approvalFeatureKey = normalizeFeatureName(approval.featureName);
+  return approvalFeatureKey === null ? allowUnnamedApproval : approvalFeatureKey === taskFeatureKey;
+}
+
+function describeMissingApproval(
+  run: Run,
+  task: DelegatedFeature,
+  specHash: string,
+  allowUnnamedApproval: boolean,
+): string | null {
+  const taskFeatureKey = normalizeFeatureName(task.name);
+  const approvalsForFeature = run.specApprovals.filter(
+    (approval) => approvalCoversFeature(approval, taskFeatureKey, allowUnnamedApproval),
+  );
+  // Authorization needs all three to agree: this run (the records live on it), this feature, and this exact text.
+  if (approvalsForFeature.some((approval) => approval.status === "approved" && approval.specHash === specHash)) {
     return null;
   }
   const featureLabel = `'${task.name}'`;
   // A superseded or still-pending record for this text tells the Supervisor exactly which step is missing.
-  if (run.specApprovals.some((approval) => approval.status === "pending" && approval.specHash === specHash)) {
+  if (approvalsForFeature.some((approval) => approval.status === "pending" && approval.specHash === specHash)) {
     return `${featureLabel}: this exact spec was submitted but the human has not approved it yet in SLP Orchestrator`;
   }
-  if (run.specApprovals.some((approval) => approval.status === "superseded" && approval.specHash === specHash)) {
+  if (approvalsForFeature.some((approval) => approval.status === "superseded" && approval.specHash === specHash)) {
     return `${featureLabel}: this spec was superseded by a later submission, so submit the current text again and have it approved`;
   }
-  const approvedOtherText = run.specApprovals.find(
-    (approval) => approval.status === "approved"
-      && (approval.featureName === task.name || approval.featureName === null),
+  // Identical text approved for another feature is not authorization for this one. The human agreed to build that
+  // feature; reusing the consent here would widen it to work nobody was asked about.
+  const approvedForOtherFeature = run.specApprovals.find(
+    (approval) => approval.status === "approved" && approval.specHash === specHash,
   );
-  if (approvedOtherText) {
+  if (approvedForOtherFeature) {
+    const otherLabel = approvedForOtherFeature.featureName
+      ? `feature '${approvedForOtherFeature.featureName}'`
+      : "a single-feature submission";
+    return `${featureLabel}: this exact text is approved for ${otherLabel}, not for this feature, and one approval cannot authorize two features. Submit it with slp_submit_spec under this feature's name and have the human approve it`;
+  }
+  if (approvalsForFeature.some((approval) => approval.status === "approved")) {
     return `${featureLabel}: the approved spec does not match the text you are delegating, so it was edited after approval. Delegate the approved text unchanged, or submit the new text with slp_submit_spec and have the human approve it`;
   }
   return `${featureLabel}: no approved spec exists. Submit it with slp_submit_spec and have the human approve it in SLP Orchestrator`;
@@ -148,11 +220,12 @@ function describeMissingApproval(run: Run, task: DelegatedFeature, specHash: str
 // The delegation boundary. Every run mode enforces this: the run mode governs how much autonomy execution has,
 // not whether a human authorized the business requirements being built.
 export function requireApprovedSpecs(run: Run, tasks: readonly DelegatedFeature[]): void {
+  const allowUnnamedApproval = tasks.length === 1;
   const unapprovedDescriptions = tasks
     // A task with no spec carries nothing to authorize. Only the follow-up rework path reaches delegate that way;
     // the bus schema requires a productSpec for every feature a Supervisor delegates.
     .filter((task) => Boolean(task.productSpec))
-    .map((task) => describeMissingApproval(run, task, productSpecHash(task.productSpec!)))
+    .map((task) => describeMissingApproval(run, task, productSpecHash(task.productSpec!), allowUnnamedApproval))
     .filter((description): description is string => description !== null);
   if (unapprovedDescriptions.length === 0) return;
   throw new ToolError([

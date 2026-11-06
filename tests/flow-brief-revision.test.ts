@@ -158,6 +158,63 @@ describe("locked brief revision", () => {
     expect(flow.run(runId).agents[developerPeerId].pauseConfirmedAt).toBeTruthy();
   });
 
+  // The gate's whole purpose is to replace an assumption with evidence, so the absence of an answer has to block
+  // exactly like a bad answer. A query that throws, times out or reports "unknown" is not proof of an idle peer.
+  it("refuses to move the brief when the shell-status query fails, times out or is unavailable", async () => {
+    const flow = await createFlow({ mode: "FULL_AUTO", orchestration: { pauseQuiesceTimeoutMs: QUIESCE_TIMEOUT_MS } });
+    const { runId, pipelineId } = await startedRunWithPipeline(flow, SINGLE_DEVELOPER_PIPELINE);
+    const developerPeerId = currentStage(flow, runId, pipelineId).peerAgentIds[0];
+    const leadAgentId = leadOf(flow, runId, pipelineId);
+    flow.gateway.setEndsTurnOnPrompt(developerPeerId);
+
+    // The session reads idle, so the shell query is the only remaining evidence — and it rejects outright.
+    flow.gateway.setShellActivityFailure(developerPeerId, { reason: "timeline request failed: 503", rejects: true });
+    const pauseCall = await flow.callAs(leadAgentId, "slp_pause_peers", { reason: "Spec changed." });
+    expect(pauseCall.isError).toBe(false);
+    expect(pauseCall.text).toContain("did not confirm");
+    expect(flow.run(runId).agents[developerPeerId].pausedAt).toBeTruthy();
+    expect(flow.run(runId).agents[developerPeerId].pauseConfirmedAt).toBeNull();
+
+    const reviseAfterRejection = await flow.callAs(leadAgentId, "slp_revise_brief", {
+      reason: "Spec changed but the runtime will not answer.",
+      brief: REVISED_BRIEF,
+    });
+    expect(reviseAfterRejection.isError).toBe(true);
+    expect(reviseAfterRejection.text).toContain(developerPeerId);
+    expect(reviseAfterRejection.text).toContain("could not be verified");
+    expect(flow.pipeline(runId, pipelineId)!.brief?.criteria.map((criterion) => criterion.id)).toEqual(["C1"]);
+
+    // A provider that answers "I don't know" (a timed-out status read) is treated the same way.
+    flow.gateway.setShellActivityFailure(developerPeerId, { reason: "timeline read timed out after 5000ms" });
+    const reviseAfterTimeout = await flow.callAs(leadAgentId, "slp_revise_brief", {
+      reason: "Spec changed while the status read times out.",
+      brief: REVISED_BRIEF,
+    });
+    expect(reviseAfterTimeout.isError).toBe(true);
+    expect(reviseAfterTimeout.text).toContain("timed out");
+    expect(flow.pipeline(runId, pipelineId)!.brief?.criteria.map((criterion) => criterion.id)).toEqual(["C1"]);
+
+    // A run-wide status failure leaves every peer unverified rather than looking like a quiet stage.
+    flow.gateway.setShellActivityFailure(developerPeerId, null);
+    flow.gateway.setLiveStatusesFailure("agent directory unavailable");
+    const reviseWithoutStatuses = await flow.callAs(leadAgentId, "slp_revise_brief", {
+      reason: "Spec changed while the directory is down.",
+      brief: REVISED_BRIEF,
+    });
+    expect(reviseWithoutStatuses.isError).toBe(true);
+    expect(reviseWithoutStatuses.text).toContain("could not be read");
+    expect(flow.pipeline(runId, pipelineId)!.brief?.criteria.map((criterion) => criterion.id)).toEqual(["C1"]);
+
+    // Only once the runtime actually answers "no shell running" does the same call go through.
+    flow.gateway.setLiveStatusesFailure(null);
+    const acceptedRevision = await flow.callAs(leadAgentId, "slp_revise_brief", {
+      reason: "The runtime can confirm the peer stopped.",
+      brief: REVISED_BRIEF,
+    });
+    expect(acceptedRevision.isError).toBe(false);
+    expect(flow.run(runId).agents[developerPeerId].pauseConfirmedAt).toBeTruthy();
+  });
+
   it("treats an archived stage peer as safe so a half-retired stage stays revisable", async () => {
     const flow = await createFlow({ mode: "FULL_AUTO", orchestration: { pauseQuiesceTimeoutMs: QUIESCE_TIMEOUT_MS } });
     const { runId, pipelineId } = await startedRunWithPipeline(flow, DEFAULT_PIPELINE);
@@ -178,6 +235,16 @@ describe("locked brief revision", () => {
       brief: REVISED_BRIEF,
     });
     expect(reviseCall.isError).toBe(false);
+
+    // An archived peer's session is closed and its stage can no longer take work, so it needs no live evidence:
+    // a stage of only archived peers stays revisable even when the runtime cannot be queried at all.
+    await flow.gateway.archive(remainingPeerId);
+    flow.gateway.setLiveStatusesFailure("agent directory unavailable");
+    const reviseWithoutRuntime = await flow.callAs(leadAgentId, "slp_revise_brief", {
+      reason: "Both advisors already finished.",
+      brief: REVISED_BRIEF,
+    });
+    expect(reviseWithoutRuntime.isError).toBe(false);
   });
 
   it("refuses a paused peer's stage report until its Lead resumes it", async () => {

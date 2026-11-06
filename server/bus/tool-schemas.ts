@@ -109,7 +109,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // Orchestrator UI. No bus tool can approve a spec, which is what makes the approval a human decision.
   slp_submit_spec: {
     roles: ["supervisor"],
-    description: "Submit the exact Product Spec text for one feature for human approval, then present it in chat, tell the human to press Approve in SLP Orchestrator, and end your turn. Re-submitting a changed text for the same feature supersedes the earlier approval. Required in every run mode before slp_delegate accepts that feature.",
+    description: "Submit the exact Product Spec text for one feature for human approval, then present it in chat, tell the human to press Approve in SLP Orchestrator, and end your turn. Use featureName matching the task name you will pass to slp_delegate: one approval authorizes one feature, so two features sharing the same spec text each need their own submission and their own approval. Re-submitting a changed text for the same feature supersedes the earlier approval. Required in every run mode before slp_delegate accepts that feature.",
     input: z.object({
       featureName: z.string().trim().min(1).optional().describe("Feature name, matching the task name you will delegate; omit for a single-feature delegation"),
       productSpec: z.string().trim().min(PRODUCT_SPEC_MIN_LENGTH),
@@ -119,7 +119,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // decompose features into Lead worktrees and communicate acceptance decisions to the human manager.
   slp_delegate: {
     roles: ["supervisor"],
-    description: "Delegate 1 or N parallel features/tasks to dedicated Lead agents in isolated worktrees with full cross-Lead awareness. Every feature needs the human-approved productSpec (scope, observable behaviors, surfaces and states, business rules and edge cases, Given/When/Then scenarios, assumptions), submitted beforehand with slp_submit_spec and approved by the human: this is refused in every run mode if the text you pass is not the approved text.",
+    description: "Delegate 1 or N parallel features/tasks to dedicated Lead agents in isolated worktrees with full cross-Lead awareness. Every feature needs the human-approved productSpec (scope, observable behaviors, surfaces and states, business rules and edge cases, Given/When/Then scenarios, assumptions), submitted beforehand with slp_submit_spec and approved by the human: this is refused in every run mode if the text you pass is not the approved text, or if the feature you are delegating is not the feature that text was approved for.",
     input: DelegationSubmissionSchema,
   },
   slp_request_rework: {
@@ -175,7 +175,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // Enables a Lead to immediately pause its child peers while updating the Brief or resolving a Spec change.
   slp_pause_peers: {
     roles: ["master_lead", "qa_lead"],
-    description: "Immediately pause active child stage peers (interrupting their current turn/shell and locking writes) while you revise the Brief or handle a Spec update. It then checks the runtime and reports which peers actually stopped; slp_revise_brief stays blocked until every live peer of the stage is confirmed stopped. Handle a peer it could not confirm with slp_handle_peer_shell or slp_escalate.",
+    description: "Immediately pause active child stage peers (interrupting their current turn/shell and locking writes) while you revise the Brief or handle a Spec update. It then checks the runtime and reports which peers actually stopped; slp_revise_brief stays blocked until every live peer of the stage is confirmed stopped. A peer whose state the runtime cannot report counts as unconfirmed, never as stopped. Handle a peer it could not confirm with slp_handle_peer_shell or slp_escalate.",
     input: z.object({
       pipelineId: pipelineIdField.optional(),
       peerAgentIds: z.array(z.string().trim().min(1)).optional(),
@@ -195,7 +195,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // The only way to change a brief after it is locked. Writes the pipeline brief the peers and QA graders follow.
   slp_revise_brief: {
     roles: ["master_lead", "qa_lead"],
-    description: "Replace the locked brief of a pipeline you own. Call slp_pause_peers first and wait until it confirms every stage peer stopped: this is refused while any live peer of the current stage is unpaused or still running a command, because the peer would keep building the brief you are replacing. Call slp_resume_peers afterwards.",
+    description: "Replace the locked brief of a pipeline you own. Call slp_pause_peers first and wait until it confirms every stage peer stopped: this is refused while any live peer of the current stage is unpaused, still running a command, or in a state the runtime cannot report, because that peer may keep building the brief you are replacing. Call slp_resume_peers afterwards.",
     input: z.object({
       pipelineId: pipelineIdField.optional(),
       reason: z.string().trim().min(1),
