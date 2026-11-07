@@ -21,6 +21,18 @@ export interface DeveloperBlueprint {
   guidance: string;
 }
 
+// Shared execution discipline for every generated developer, regardless of stack.
+// Stack-specific commands and boundaries remain in each blueprint's guidance.
+export const DEVELOPER_EXECUTION_GUIDANCE = [
+  "Treat the locked brief as the settled technical plan; do not repeat planning or redesign the feature.",
+  "Inspect relevant files and dependencies first; expand repository exploration only for a concrete uncertainty.",
+  "Reuse existing patterns and make the smallest maintainable change that meets the criteria. Avoid unrelated refactoring or extras.",
+  "On rework, fix the reported failing criteria and directly affected code without reopening completed scope.",
+  "Run applicable fast-tier checks from TEST_POLICY; expand checks when failures or dependencies justify it, leaving heavy verification to QA.",
+  "Commit in the pipeline worktree and report via slp_stage_report: changed files, commands and results, unmet criteria and hand-off items.",
+  "If the brief cannot be followed, call slp_escalate rather than improvising a new approach.",
+].join("\\n");
+
 // One developer per stack. owned_paths is filled by the scaffold from the detected package paths.
 export const DEVELOPER_BLUEPRINTS: Partial<Record<DetectedStack, DeveloperBlueprint>> = {
   php: {
