@@ -317,8 +317,9 @@ describe("slp-manager project skill provisioning", () => {
     const supervisorWorkflow = defaultProjectPrompts().supervisor.workflow;
     const leadWorkflow = defaultProjectPrompts().lead.workflow;
 
-    for (const specTopic of ["scope and out of scope", "observable behaviors", "edge cases", "unknowns and assumptions"]) {
+    for (const specTopic of ["minimum sufficient spec", "expected behavior", "acceptance criteria", "constraints / decisions", "not mandatory headings"]) {
       expect(skillMarkdown.toLowerCase()).toContain(specTopic);
+      expect(supervisorWorkflow.toLowerCase()).toContain(specTopic === "minimum sufficient spec" ? "smallest spec" : specTopic);
     }
     for (const briefTopic of ["integration points", "data and API contracts", "failure behavior"]) {
       expect(skillMarkdown).toContain(briefTopic);
@@ -326,9 +327,6 @@ describe("slp-manager project skill provisioning", () => {
     // A generated .slp must teach the traceability the QA Lead relies on to spot uncovered scenarios.
     expect(skillMarkdown).toContain("names the product spec scenario or acceptance criterion it covers");
     expect(leadWorkflow).toContain("names the product spec scenario or acceptance criterion it covers");
-    // Surfaces are conditional in both documents so non-UI work is not forced to invent screens.
-    expect(skillMarkdown).toContain("where the feature has any");
-    expect(supervisorWorkflow).toContain("where the feature has a UI or API surface");
     // Nothing may pin a section count now that the list is open-ended.
     expect(skillMarkdown).not.toMatch(/5-section|five-section/);
     // The wire contract itself is unchanged, so the exact brief shape must survive the rewording.

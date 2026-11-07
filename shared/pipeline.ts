@@ -128,7 +128,7 @@ export const DelegationSubmissionSchema = z
         ? submission.tasks.every((task) => Boolean(task.productSpec))
         : Boolean(submission.productSpec),
     {
-      message: `Provide the human-approved productSpec (at least ${PRODUCT_SPEC_MIN_LENGTH} characters: scope and out of scope, observable behaviors, surfaces and states where there are any, business rules and edge cases, Given/When/Then scenarios, unknowns and assumptions) for every feature before delegating.`,
+      message: `Provide the human-approved productSpec (at least ${PRODUCT_SPEC_MIN_LENGTH} characters: the minimum sufficient spec covering the goal, the expected behavior and checkable acceptance criteria, plus scope and constraints/decisions where they matter) for every feature before delegating.`,
     },
   );
 export type DelegationSubmission = z.infer<typeof DelegationSubmissionSchema>;

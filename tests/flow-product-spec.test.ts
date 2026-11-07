@@ -91,7 +91,6 @@ describe("product spec phase", () => {
   it("tells the Supervisor to get explicit human approval of the spec before delegating", () => {
     const supervisorPrompt = systemPromptFor("supervisor");
     expect(supervisorPrompt).toContain("Product spec before delegation");
-    expect(supervisorPrompt).toContain("Given <context> When <user action> Then <visible result>");
     // The prompt must route approval through the tool the engine checks, and say that its own word is not proof.
     expect(supervisorPrompt).toContain("slp_submit_spec");
     expect(supervisorPrompt).toContain("press Approve");
@@ -101,17 +100,17 @@ describe("product spec phase", () => {
 
   // A spec that only enumerates screens leaves the Lead guessing and gives QA nothing to grade on non-UI work.
   // These assertions cover the prompt text; the flow below proves the runtime actually carries such a spec through.
-  it("asks the Supervisor for scope, behaviors, edge cases, checkable scenarios and written assumptions", () => {
+  it("asks the Supervisor for a minimum sufficient spec with checkable criteria and written assumptions", () => {
     const supervisorPrompt = systemPromptFor("supervisor");
-    expect(supervisorPrompt).toContain("Out of scope: what it deliberately does not cover");
-    expect(supervisorPrompt).toContain("Observable behaviors");
-    expect(supervisorPrompt).toContain("edge cases");
-    expect(supervisorPrompt).toContain("Unknowns and assumptions");
-    // Each Then must be checkable by someone outside the implementation, or the QA Lead cannot turn it into a test case.
+    expect(supervisorPrompt).toContain("the smallest spec that lets the Lead build it correctly and the QA Lead verify it");
+    expect(supervisorPrompt).toContain("State WHAT, not HOW");
+    expect(supervisorPrompt).toContain("Expected behavior");
+    expect(supervisorPrompt).toContain("Acceptance criteria");
+    expect(supervisorPrompt).toContain("Constraints / decisions");
+    // Each criterion must be checkable by someone outside the implementation, or the QA Lead cannot turn it into a test case.
     expect(supervisorPrompt).toContain("someone who did not build the feature can check it");
-    // Surfaces are conditional: a migration or background job has no screen to describe.
-    expect(supervisorPrompt).toContain("where the feature has a UI or API surface");
-    expect(supervisorPrompt).toContain("skips section 3");
+    // Groups are optional: a migration or background job has no screen to describe.
+    expect(supervisorPrompt).toContain("they are not mandatory headings");
     // The section count is no longer fixed, so no prompt or runtime message may pin one.
     expect(supervisorPrompt).not.toMatch(/5-section|five-section/);
     expect(supervisorBriefing()).not.toMatch(/5-section|five-section/);
