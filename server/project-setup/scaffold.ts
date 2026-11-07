@@ -10,7 +10,7 @@ import { STACK_LABELS } from "../../shared/project-setup";
 import { detectStacks } from "./stack-detector";
 import { defaultPromptFiles } from "../project-prompts/defaults";
 import {
-  DEVELOPER_BLUEPRINTS, QA_BLUEPRINT, SHARED_ADVISOR_BLUEPRINTS, SLP_PEER_PROTOCOL,
+  DEVELOPER_BLUEPRINTS, DEVELOPER_EXECUTION_GUIDANCE, QA_BLUEPRINT, SHARED_ADVISOR_BLUEPRINTS, SLP_PEER_PROTOCOL,
   type DeveloperBlueprint,
 } from "./peer-blueprints";
 import { gitignorePatternsForStack, SETUP_COMMAND_BY_STACK } from "./preset-data";
@@ -42,6 +42,7 @@ function renderPeer(blueprint: DeveloperBlueprint, kind: "advisor" | "developer"
     "# Workflow",
     "",
     blueprint.guidance,
+    ...(kind === "developer" ? ["", DEVELOPER_EXECUTION_GUIDANCE] : []),
     "",
     SLP_PEER_PROTOCOL,
     "",
