@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Text, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
-import type { OrchestrationSettings } from "../../shared/orchestration";
+import { parseAllowedAgentProviders, type OrchestrationSettings } from "../../shared/orchestration";
 import type { UiStyles } from "../styles";
+import { LabeledInput } from "./labeled-input";
 import { SelectField, type SelectOption } from "./select-field";
 
 // Fork is a measurable experiment, so both states stay one tap away instead of hiding behind a flag file.
@@ -31,6 +33,8 @@ export function OrchestrationSettingsFields({ styles, theme, disabled, orchestra
   const reworkRoundOptions = REWORK_ROUND_OPTIONS.some((option) => option.value === reworkRoundValue)
     ? REWORK_ROUND_OPTIONS
     : [...REWORK_ROUND_OPTIONS, { value: reworkRoundValue, label: `${reworkRoundValue} rounds`, detail: "Custom value" }];
+  // Raw text stays local so typing "codex-slp, " is not rewritten while the user is still entering the next ID.
+  const [allowedProvidersText, setAllowedProvidersText] = useState((orchestration.allowedAgentProviders ?? []).join(", "));
   return (
     <View style={styles.providerRoleCard}>
       <Text style={styles.bodyText}>Pipeline Policy (applies to new runs)</Text>
@@ -46,6 +50,18 @@ export function OrchestrationSettingsFields({ styles, theme, disabled, orchestra
             onChange({ ...orchestration, maxReworkRounds: parsedRoundCount });
           }
         }} />
+      <LabeledInput styles={styles} theme={theme}
+        label="Allowed agent providers (comma-separated Paseo provider IDs; blank = any)"
+        value={allowedProvidersText} placeholder="e.g. codex-slp"
+        onChangeText={(nextText) => {
+          if (disabled) return;
+          setAllowedProvidersText(nextText);
+          onChange({ ...orchestration, allowedAgentProviders: parseAllowedAgentProviders(nextText) });
+        }} />
+      <Text style={styles.mutedText}>
+        Runs refuse to start, and SLP refuses to create agents, on any other provider, including one named in a .slp model.
+        This checks provider IDs only; it does not show that an agent is sandboxed.
+      </Text>
     </View>
   );
 }

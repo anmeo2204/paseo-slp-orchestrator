@@ -377,6 +377,20 @@ behavioural observations:
    - Interim operating restrictions I-1 to I-7 apply (`PHASE1_CLOSURE_REPORT.md` §7.4).
    - Audit rows written from now on attribute RPC actions as `rpc:<method>` and the FULL_AUTO merge as `engine`.
    - Run #15's stored rows keep their original `from: "manager"`.
+   *Update 2026-11-07 (sandbox preflight review and approved fixes):*
+   - The preflight review of the Seatbelt prototype found several gaps; full record in `PHASE1_SEATBELT_FEASIBILITY.md` §12:
+     - a sandboxed agent could move `main` directly, or change what an existing commit contains by rewriting objects (both verified on fixtures);
+     - it could write other applications' preferences through `cfprefsd` (verified);
+     - it could plant code in shared caches;
+     - it could read or write other projects' worktrees;
+     - it could query the keychain service;
+     - a `.slp` model could switch agents to the unsandboxed `codex` provider.
+   - All of these are fixed in the policy and wrapper, except the last, which is fixed by a plugin provider allowlist that checks provider IDs only and does not prove sandboxing.
+   - The sandbox validator now matches all 106 checks, with the 2 Apple Events probes skipped. 31 of its probes fail against the pre-fix policy.
+   - Nothing is deployed: `~/.paseo/config.json` and `slp-live-repo` are unchanged, no agent ran, and the plugin was not reloaded.
+   - Still open:
+     - the final merge takes the integration branch by name, not the reviewed commit (Medium–High);
+     - the plugin's provider-ID normalization (feasibility §8) blocks the live test.
 
 ---
 
@@ -403,6 +417,14 @@ agent has invoked either; that access is a defect to fix, not a route to use.
 5. Optionally decide whether a second pass on the `cursor` ACP provider is in scope, given its different
    permission path (§4).
 
+6. *Added 2026-11-07.* Before the first live **sandboxed** run, approve separately each of the following (`PHASE1_SEATBELT_FEASIBILITY.md` §10, revised pre-conditions):
+   - the §8 provider-ID normalization;
+   - a plugin reload with the hardened commit;
+   - creating `~/.codex-slp` and its login;
+   - the `codex-slp` provider entry and a daemon restart;
+   - setting "Allowed agent providers" to `codex-slp`;
+   - the live run on `slp-live-repo`.
+
 **Note on `claude`:** it is disabled in `config.json`. Either enable and authenticate it, or accept that the first
 live pass runs on `codex` with providers set explicitly at run start.
 
@@ -427,6 +449,11 @@ delegation before approval and allowed it only after a recorded approval. The ru
 merged into the test repo's `main` at `681bd37`; the 14 tests were reproduced independently. Scenario A is
 **PARTIAL** (escalation step not exercised; approval provenance bounded by §3.2). B–F remain outstanding, so the
 recommendation does not change.
+
+*Update 2026-11-07 (sandbox).* The preflight findings are fixed and re-validated (§5 item 6). The first live sandbox
+test remains **NO-GO** until the §8 provider-ID change, the reload and the configuration steps in §6 item 6 are
+approved and done. After them it would be a CONDITIONAL GO, with the reviewed-commit check (feasibility L8b) as a
+manual control.
 
 Recommended disposition: keep the automated acceptance already granted, treat live acceptance as outstanding, and
 schedule the runbook with the Manager. **Phase 1 is not closed by this report.** Phase 2 has not been started.

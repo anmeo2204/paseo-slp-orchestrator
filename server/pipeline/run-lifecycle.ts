@@ -45,9 +45,11 @@ export interface StartRunInput {
 async function currentOrchestrationSettings(ctx: PipelineContext): Promise<OrchestrationSettings> {
   try {
     return (await ctx.getSettings?.())?.orchestration ?? DEFAULT_ORCHESTRATION_SETTINGS;
-  } catch {
-    // An unreadable settings store must not block starting a run; the defaults are the safe policy.
-    return DEFAULT_ORCHESTRATION_SETTINGS;
+  } catch (settingsError) {
+    // The defaults have no provider allowlist, so falling back to them could start agents the host policy forbids.
+    throw new Error(
+      `Cannot read SLP settings, so the agent provider allowlist cannot be checked: ${settingsError instanceof Error ? settingsError.message : String(settingsError)}`,
+    );
   }
 }
 
@@ -96,9 +98,9 @@ export async function startRun(ctx: PipelineContext, input: StartRunInput) {
     leadPermissionModeId: input.providers.leadPermissionModeId ?? null,
     peerPermissionModeId: input.providers.peerPermissionModeId ?? null,
   };
-  validateProjectAgentSettings(promptConfig, providers);
   // Snapshot the orchestration policy so changing host settings mid-run never changes how this run forks or caps rework.
   const orchestration = input.orchestration ?? await currentOrchestrationSettings(ctx);
+  validateProjectAgentSettings(promptConfig, providers, orchestration.allowedAgentProviders);
   const paseo = await ctx.holder.get();
   // Supervisor, Master Lead, and Forked Leads share the main checkout so finalized pipeline branches merge straight into baseBranch.
   const supervisorWorkspace = await openSupervisorWorkspace(paseo, input.repoPath);

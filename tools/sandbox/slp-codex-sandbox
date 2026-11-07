@@ -11,33 +11,43 @@ fail() { echo "slp-codex-sandbox: $*" >&2; exit 78; }
 # A process that is already sandboxed cannot apply a second profile, and an outer sandbox is not ours to trust.
 [[ -z "${SLP_SANDBOXED:-}" ]] || fail "refusing to nest: already running under the SLP sandbox"
 
+# The profile and the protected plugin checkout are always the ones next to this script; no environment variable
+# can point the wrapper at a weaker profile or move the write-protection elsewhere.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-profile="${SLP_SANDBOX_PROFILE:-$script_dir/slp-codex.sb}"
+profile="$script_dir/slp-codex.sb"
 [[ -f "$profile" ]] || fail "profile not found: $profile"
 
 real_path() { /usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
 regex_escape() { /usr/bin/python3 -c 'import re,sys; print(re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", sys.argv[1]))' "$1"; }
 
 home_dir="$(real_path "$HOME")"
-slp_state_dir="$(real_path "${SLP_HOME:-$home_dir/.slp-orchestrator}")"
-paseo_home="$(real_path "${PASEO_HOME:-$home_dir/.paseo}")"
-plugin_source_dir="$(real_path "${SLP_PLUGIN_SOURCE_DIR:-$script_dir/../..}")"
+plugin_source_dir="$(real_path "$script_dir/../..")"
+# SLP_HOME and PASEO_HOME may point elsewhere (Paseo sets SLP_HOME for every agent; the validator uses a fixture
+# Paseo home), but the default locations stay denied too, so an override can only add protection.
+default_slp_state_dir="$home_dir/.slp-orchestrator"
+default_paseo_home="$home_dir/.paseo"
+slp_state_dir="$(real_path "${SLP_HOME:-$default_slp_state_dir}")"
+paseo_home="$(real_path "${PASEO_HOME:-$default_paseo_home}")"
 codex_home="$(real_path "${SLP_CODEX_HOME:-$home_dir/.codex-slp}")"
 manager_codex_home="$(real_path "$home_dir/.codex")"
 user_tmp_dir="$(real_path "${TMPDIR:-$(getconf DARWIN_USER_TEMP_DIR)}")"
-user_cache_dir="$(real_path "$(getconf DARWIN_USER_CACHE_DIR)")"
 # The per-user temp dir holds other programs' control sockets (browsers, editors, Codex hosts), so each session gets
 # a private directory of its own and only that one is writable and reachable over Unix sockets.
 case "$user_tmp_dir" in /private/var/folders/*) ;; *) fail "unexpected per-user temp dir '$user_tmp_dir'" ;; esac
-session_tmp_dir="$(real_path "$(mktemp -d "$user_tmp_dir/slp-codex.XXXXXX")")"
 
 # Main repositories whose .git may receive commits from SLP worktrees, colon-separated (provider `env`).
 [[ -n "${SLP_SANDBOX_REPOS:-}" ]] || fail "SLP_SANDBOX_REPOS is not set (main repositories SLP may commit to)"
 git_repos_re=""
+worktree_projects_re=""
 IFS=: read -r -a listed_repos <<< "$SLP_SANDBOX_REPOS"
 for listed_repo in "${listed_repos[@]}"; do
   [[ -d "$listed_repo/.git" ]] || fail "SLP_SANDBOX_REPOS entry is not a git checkout: $listed_repo"
-  git_repos_re+="${git_repos_re:+|}$(regex_escape "$(real_path "$listed_repo")")"
+  listed_repo_real="$(real_path "$listed_repo")"
+  git_repos_re+="${git_repos_re:+|}$(regex_escape "$listed_repo_real")"
+  # Paseo keeps each repository's worktrees in <worktrees>/<project hash>; only those directories are opened.
+  project_hash="$(/usr/bin/python3 "$script_dir/paseo-project-hash.py" "$listed_repo_real")"
+  [[ "$project_hash" =~ ^[0-9a-z]{8}$ ]] || fail "could not derive the Paseo worktree directory for $listed_repo"
+  worktree_projects_re+="${worktree_projects_re:+|}$project_hash"
 done
 
 [[ -d "$codex_home" ]] || fail "dedicated Codex home missing: $codex_home (see the feasibility report, setup step)"
@@ -47,15 +57,42 @@ bus_port="$(tr -d '[:space:]' < "$slp_state_dir/bus-port" 2>/dev/null || true)"
 [[ "$bus_port" =~ ^[0-9]+$ ]] && (( bus_port > 0 && bus_port < 65536 )) || fail "invalid SLP bus port in $slp_state_dir/bus-port"
 (( bus_port < 39001 || bus_port > 39010 )) || fail "bus port $bus_port collides with the sandbox test-port pool"
 
-# The daemon must listen on loopback only; a LAN-bound daemon is reachable through addresses Seatbelt cannot single out.
-listen="$(/usr/bin/plutil -extract daemon.listen raw -o - "$paseo_home/config.json" 2>/dev/null || true)"
-if [[ -z "$listen" ]]; then
-  listen="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("daemon",{}).get("listen",""))' "$paseo_home/config.json" 2>/dev/null || true)"
-fi
-case "$listen" in
-  127.0.0.1:*|localhost:*|"[::1]":*|"") ;;
-  *) fail "Paseo daemon listens on '$listen'; the sandbox requires a loopback-only daemon" ;;
-esac
+# The daemon must listen on loopback only (a LAN-bound daemon is reachable through addresses Seatbelt cannot single
+# out), and worktrees must be in the default root the profile opens. A missing config means Paseo's defaults; an
+# unreadable or malformed one stops the provider rather than being treated as defaults.
+config_problem="$(/usr/bin/python3 - "$paseo_home/config.json" "${PASEO_LISTEN:-}" <<'PY'
+import json, os, sys
+
+def loopback(value):
+    return isinstance(value, str) and value.startswith(("127.0.0.1:", "localhost:", "[::1]:"))
+
+path, env_listen = sys.argv[1], sys.argv[2]
+if env_listen and not loopback(env_listen):
+    print(f"PASEO_LISTEN is '{env_listen}'; the sandbox requires a loopback-only daemon")
+    sys.exit(0)
+if not os.path.lexists(path):
+    sys.exit(0)
+try:
+    with open(path) as config_file:
+        config = json.load(config_file)
+except Exception as error:
+    print(f"cannot read {path}: {error}")
+    sys.exit(0)
+if not isinstance(config, dict):
+    print(f"{path} is not a JSON object")
+    sys.exit(0)
+daemon = config.get("daemon")
+listen = daemon.get("listen") if isinstance(daemon, dict) else None
+if listen not in (None, "") and not loopback(listen):
+    print(f"Paseo daemon listens on '{listen}'; the sandbox requires a loopback-only daemon")
+    sys.exit(0)
+worktrees = config.get("worktrees")
+root = worktrees.get("root") if isinstance(worktrees, dict) else None
+if isinstance(root, str) and root.strip():
+    print("Paseo worktrees.root is customised; the sandbox only opens <Paseo home>/worktrees")
+PY
+)" || fail "could not check the Paseo configuration"
+[[ -z "$config_problem" ]] || fail "$config_problem"
 
 real_codex="${SLP_REAL_CODEX:-}"
 if [[ -z "$real_codex" ]]; then
@@ -66,17 +103,47 @@ if [[ -z "$real_codex" ]]; then
 fi
 [[ -n "$real_codex" && -x "$real_codex" ]] || fail "codex binary not found (set SLP_REAL_CODEX)"
 
+# Credentials the daemon's environment happens to carry are not the agent's. Its own bus token stays (it already
+# holds it in the MCP URL); anything else the Manager wants passed through is named in SLP_SANDBOX_KEEP_ENV.
+keep_env=":${SLP_SANDBOX_KEEP_ENV:-}:"
+shopt -s nocasematch
+while IFS= read -r env_name; do
+  [[ "$env_name" == "SLP_AGENT_TOKEN" || "$keep_env" == *":$env_name:"* ]] && continue
+  if [[ "$env_name" =~ (TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|_AUTH$|^AUTH_) ]] \
+    || [[ "$env_name" =~ ^(AWS_|AZURE_|GOOGLE_APPLICATION_CREDENTIALS$|SSH_AUTH_SOCK$|SSH_AGENT_PID$|GPG_AGENT_INFO$|KUBECONFIG$|DOCKER_(HOST|CONFIG|CERT_PATH)$) ]]; then
+    unset "$env_name"
+  fi
+done < <(compgen -e)
+shopt -u nocasematch
+
+session_tmp_dir="$(real_path "$(mktemp -d "$user_tmp_dir/slp-codex.XXXXXX")")"
+# Shared caches (~/.npm, ~/.cache, ~/Library/Caches) hold code that unsandboxed tools run later, so they are
+# read-only in the sandbox and package managers are pointed at a cache inside the session dir instead.
+session_cache_dir="$session_tmp_dir/cache"
+mkdir -p "$session_cache_dir"
+
 export CODEX_HOME="$codex_home"
 export SLP_SANDBOXED=1
 export TMPDIR="$session_tmp_dir/"
+export XDG_CACHE_HOME="$session_cache_dir"
+export npm_config_cache="$session_cache_dir/npm"
+export npm_config_devdir="$session_cache_dir/node-gyp"
+export npm_config_store_dir="$session_cache_dir/pnpm-store"
+export YARN_CACHE_FOLDER="$session_cache_dir/yarn"
+export PIP_CACHE_DIR="$session_cache_dir/pip"
+export UV_CACHE_DIR="$session_cache_dir/uv"
+export GOCACHE="$session_cache_dir/go-build"
+export CLANG_MODULE_CACHE_PATH="$session_cache_dir/clang-modules"
 
 exec /usr/bin/sandbox-exec \
   -D HOME_DIR="$home_dir" \
   -D BUS_PORT="$bus_port" \
   -D SLP_STATE_DIR="$slp_state_dir" \
+  -D DEFAULT_SLP_STATE_DIR="$default_slp_state_dir" \
   -D PASEO_HOME="$paseo_home" \
-  -D PASEO_WORKTREES="$paseo_home/worktrees" \
+  -D DEFAULT_PASEO_HOME="$default_paseo_home" \
   -D PASEO_WORKTREES_RE="$(regex_escape "$paseo_home/worktrees")" \
+  -D WORKTREE_PROJECTS_RE="$worktree_projects_re" \
   -D CODEX_HOME_RE="$(regex_escape "$codex_home")" \
   -D GIT_REPOS_RE="$git_repos_re" \
   -D PASEO_APP_SUPPORT="$home_dir/Library/Application Support/Paseo" \
@@ -84,6 +151,5 @@ exec /usr/bin/sandbox-exec \
   -D CODEX_HOME_DIR="$codex_home" \
   -D MANAGER_CODEX_HOME="$manager_codex_home" \
   -D TMP_DIR="$session_tmp_dir" \
-  -D CACHE_DIR="$user_cache_dir" \
   -f "$profile" \
   "$real_codex" "$@"

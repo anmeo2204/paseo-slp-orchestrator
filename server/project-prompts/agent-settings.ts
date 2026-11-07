@@ -3,6 +3,7 @@ import { getUnattendedModeId } from "@getpaseo/protocol/provider-manifest";
 import type { SlpRole } from "../../shared/roles";
 import type { ProjectPromptConfig } from "../../shared/project-prompts";
 import type { ProviderChoices } from "../../shared/state";
+import { disallowedAgentProvider } from "../../shared/orchestration";
 import { defaultProjectPrompts, peerRole, qaLeadDefinition } from "./defaults";
 
 export interface AgentModelSettings {
@@ -205,7 +206,11 @@ export function resolveAgentSettings(
   };
 }
 
-export function validateProjectAgentSettings(configuration: ProjectPromptConfig, providers: ProviderChoices): void {
+export function validateProjectAgentSettings(
+  configuration: ProjectPromptConfig,
+  providers: ProviderChoices,
+  allowedAgentProviders: readonly string[] | null = null,
+): void {
   const supervisorDefaults = { provider: providers.supervisor, thinkingOptionId: providers.supervisorThinkingOptionId ?? undefined,
     permissionModeId: providers.supervisorPermissionModeId ?? undefined };
   const leadDefaults = { provider: providers.lead, thinkingOptionId: providers.leadThinkingOptionId ?? undefined,
@@ -213,9 +218,37 @@ export function validateProjectAgentSettings(configuration: ProjectPromptConfig,
   const peerDefaults = { provider: providers.peer, thinkingOptionId: providers.peerThinkingOptionId ?? undefined,
     permissionModeId: providers.peerPermissionModeId ?? undefined };
   // Catch incompatible provider permission overrides before a run creates any worktree or session.
-  resolveAgentSettings(configuration, "supervisor", undefined, supervisorDefaults);
-  resolveAgentSettings(configuration, "master_lead", undefined, leadDefaults);
-  // The QA Lead shares the Lead provider choices but may override its model in QA_LEAD.md.
-  resolveAgentSettings(configuration, "qa_lead", undefined, leadDefaults);
-  for (const peer of configuration.peers) resolveAgentSettings(configuration, "peer", peer.role, peerDefaults);
+  const resolvedRoles: Array<{ label: string; provider: string }> = [
+    { label: "Supervisor", provider: resolveAgentSettings(configuration, "supervisor", undefined, supervisorDefaults).provider },
+    { label: "Lead", provider: resolveAgentSettings(configuration, "master_lead", undefined, leadDefaults).provider },
+    // The QA Lead shares the Lead provider choices but may override its model in QA_LEAD.md.
+    { label: "QA Lead", provider: resolveAgentSettings(configuration, "qa_lead", undefined, leadDefaults).provider },
+    ...configuration.peers.map((peer) => ({
+      label: `peer '${peer.role}'`,
+      provider: resolveAgentSettings(configuration, "peer", peer.role, peerDefaults).provider,
+    })),
+  ];
+  if (allowedAgentProviders === null) return;
+  // The form's own tier choices are checked too: a rejected peer model falls back to the peer tier provider.
+  resolvedRoles.push(
+    { label: "Supervisor tier", provider: providers.supervisor },
+    { label: "Lead tier", provider: providers.lead },
+    { label: "Peer tier", provider: providers.peer },
+  );
+  for (const { label, provider } of resolvedRoles) {
+    assertAgentProviderAllowed(allowedAgentProviders, provider, label);
+  }
+}
+
+export function assertAgentProviderAllowed(
+  allowedAgentProviders: readonly string[] | null,
+  provider: string,
+  label: string,
+): void {
+  const rejectedProviderId = disallowedAgentProvider(allowedAgentProviders, provider);
+  if (rejectedProviderId === null) return;
+  throw new Error(
+    `${label} resolves to provider '${rejectedProviderId}', which is not in the SLP agent provider allowlist `
+    + `[${(allowedAgentProviders ?? []).join(", ")}]. Change the .slp model or the run's provider choice.`,
+  );
 }

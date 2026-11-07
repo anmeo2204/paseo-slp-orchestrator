@@ -208,6 +208,16 @@ describe("slp-manager project skill provisioning", () => {
     expect(BUS_TOOL_DEFINITIONS.slp_pause_peers.description).toContain("never as stopped");
   });
 
+  // The allowlist rejects .slp provider switches at run start, so authors must hear about it before writing one,
+  // and must not be told it proves the provider's process is sandboxed.
+  it("documents the agent provider allowlist and its limit", () => {
+    const skillMarkdown = renderSlpManagerSkillMarkdown();
+    expect(skillMarkdown).toContain("Allowed agent providers");
+    expect(skillMarkdown).toContain("refuses to start");
+    expect(skillMarkdown).toContain("does not show that the provider's process is sandboxed");
+    expect(skillMarkdown).toMatch(/7\. \*\*Models and the provider allowlist:\*\*/);
+  });
+
   it("requires a productSpec wherever the skill shows a delegation payload", () => {
     // Stale examples without productSpec make every generated Supervisor prompt fail at slp_delegate.
     const delegationLines = renderSlpManagerSkillMarkdown()

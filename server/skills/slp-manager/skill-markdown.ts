@@ -84,7 +84,9 @@ SLP orchestrates software delivery across three tiers and four runtime roles (\`
    - Peers talk **only to their Lead** (\`slp_ask\` / \`slp_notify\` / \`slp_answer\`); the bus rejects peer-to-peer messages. Developers report progress in \`slp_stage_report\`.
    - Peers run in the Lead's worktree. Whether they fork the Lead's session is a run setting (off by default, and cross-provider peers automatically fall back to a fresh session with full stage mail), so a peer workflow must never assume it inherited the Lead's context: everything it needs arrives in its stage mail (goal, task, acceptance criteria, locked brief or criteria to grade). The engine also adds a short kind-specific instruction to that mail; peer files must not contradict it.
 
-**Run settings, not \`.slp\` content:** "Fork peers from the Lead session", "Max rework rounds per stage" and default per-tier models/providers live in the SLP Orchestrator settings and are snapshotted per run. Do not write them into \`.slp\` files.
+**Run settings, not \`.slp\` content:** "Fork peers from the Lead session", "Max rework rounds per stage", "Allowed agent providers" and default per-tier models/providers live in the SLP Orchestrator settings and are snapshotted per run. Do not write them into \`.slp\` files.
+
+**Allowed agent providers:** when the human sets this list (for example \`codex-slp\`), every SLP agent must resolve to one of those Paseo provider IDs after \`.slp\` \`model\` overrides and the peer-model fallback. A run whose tier choices or \`.slp\` models name any other provider refuses to start, and SLP refuses to create such an agent later. It checks provider IDs only: it does not show that the provider's process is sandboxed, so never describe it to the human as proof of isolation.
 
 ---
 
@@ -188,7 +190,7 @@ ROLE: Pipeline peer (Backend & API Engineer), the only developer of this pipelin
 1. \`role\` *(required)*: the ID the Lead passes in \`slp_define_pipeline\` -> \`peers: [{ role, task }]\`.
 2. \`description\` *(required)*: when the Lead should schedule this peer and what it owns. The Lead picks peers from this line, so state the kind of problem it is for.
 3. \`name\` *(optional)*: display title, defaults to \`role\`.
-4. \`model\` *(optional)*: empty inherits the run's Peer model. A short ID keeps the run's provider; \`provider/model\` switches it. When the run forks peers, a model from another provider than the Lead's automatically falls back to a fresh session on that provider with full stage mail.
+4. \`model\` *(optional)*: empty inherits the run's Peer model. A short ID keeps the run's provider; \`provider/model\` switches it. When the run forks peers, a model from another provider than the Lead's automatically falls back to a fresh session on that provider with full stage mail. When the human has set "Allowed agent providers", a \`provider/model\` outside that list makes the run refuse to start, so prefer short model IDs (or leave \`model\` empty) unless the human asked for a specific provider.
 5. \`thinking\` *(optional)*: reasoning option ID (\`low\`, \`medium\`, \`high\`), empty inherits.
 6. \`kind\` *(required for generated peers)*: \`advisor\`, \`developer\` or \`qa\` (see section 1).
 7. \`tier\` *(required for generated peers)*: \`feature\` or \`integration\`, matching the kind (section 2, step 4).
@@ -212,7 +214,7 @@ Start from the seeded files (the plugin writes them into an empty \`.slp/\`) and
 9. **Turn rule:** *"After \`slp_submit_spec\`, \`slp_delegate\`, \`slp_notify\`, \`slp_request_rework\`, \`slp_relay_decision\` or \`slp_present_to_manager\` succeeds, END YOUR TURN."*
 
 ### Mandatory Checklist When Editing \`.slp/LEAD.md\`
-1. **Front matter:** \`role: master-lead\` (or \`lead\`) and a non-empty \`description\`. A \`model\` from another provider switches the Lead's provider.
+1. **Front matter:** \`role: master-lead\` (or \`lead\`) and a non-empty \`description\`. A \`model\` from another provider switches the Lead's provider, and with it the provider its stage peers fork from; outside the "Allowed agent providers" list the run refuses to start.
 2. **Product spec is a contract** and sibling Leads align shared contracts via \`slp_ask\`.
 3. **Pipeline shape:** \`{ pipeline: { name, description, stages: [{ name, kind?, goal, peers: [{ role, task }] }], brief? } }\` with role IDs from the catalog, no \`systemPrompt\` field, and the enforced shape \`[planning with advisors]? -> implement with one developer\`. Never recommend a review, QA or verify stage inside a feature pipeline.
 4. **When to plan:** say which project situations deserve planning and which advisors fit them (for example: new subsystem -> \`system-architect\`; auth or payment change -> \`security-advisor\`), and that small, clear changes skip planning and pass \`brief\` directly.
@@ -263,6 +265,7 @@ Old files still load, but their instructions contradict the engine and cause rej
 4. **Peers:** add \`kind\` and a matching \`tier\` to every peer; turn code-reviewer style peers into planning advisors; give QA peers the scorecard report from \`references/PEER_TEMPLATES.md\`; delete "Method Contract", "Rejected Alternatives", "enumerate all edge cases", "STRICT TECHNICAL METRICS" and peer-to-peer coordination sections.
 5. **Legacy \`.slp/peers/END_USER_UAT.md\`:** read it first and move project-specific journeys into the QA Lead's plan or into a \`kind: qa\` integration grader. Delete the file only after the human confirms, and remove every reference to the \`end-user\` role with it.
 6. **Standards:** create \`.slp/standards/TEST_POLICY.md\` from the investigation if it is missing.
+7. **Models and the provider allowlist:** list every non-empty \`model\` in \`SUPERVISOR.md\`, \`LEAD.md\`, \`QA_LEAD.md\` and the peer files for the human. A full \`provider/model\` that the human has not asked for should become a short model ID or empty, because a run with "Allowed agent providers" set refuses to start on it.
 
 After the edits, run the verification procedure in section 5 and list every changed file for the human.
 `;

@@ -1,22 +1,24 @@
 ;; Seatbelt policy for SLP Codex agents (prototype, see docs/audits/PHASE1_SEATBELT_FEASIBILITY.md).
 ;; Applied by tools/sandbox/slp-codex-sandbox to `codex app-server` and inherited by every child process.
 ;; All paths must be real paths (no symlinks): Seatbelt matches the resolved path, e.g. /private/var/... for /var/...
+;; Seatbelt regexes have no {n} quantifier; repeat character classes instead.
 ;;
 ;; Parameters (all required, passed with sandbox-exec -D):
-;;   HOME_DIR           the user's home directory
-;;   BUS_PORT           the SLP MCP bus port on 127.0.0.1
-;;   SLP_STATE_DIR      ~/.slp-orchestrator
-;;   PASEO_HOME         ~/.paseo
-;;   PASEO_WORKTREES    ~/.paseo/worktrees
-;;   PASEO_WORKTREES_RE PASEO_WORKTREES with regex metacharacters escaped
-;;   PASEO_APP_SUPPORT  ~/Library/Application Support/Paseo
-;;   PLUGIN_SOURCE_DIR  the SLP plugin checkout
-;;   CODEX_HOME_DIR     the dedicated SLP Codex home (not the Manager's ~/.codex)
-;;   CODEX_HOME_RE      CODEX_HOME_DIR with regex metacharacters escaped
-;;   GIT_REPOS_RE       escaped main-repository paths SLP runs on, joined with `|` (from $SLP_SANDBOX_REPOS)
-;;   MANAGER_CODEX_HOME the Manager's ~/.codex
-;;   TMP_DIR            a private per-session temp dir created by the wrapper (exported to Codex as $TMPDIR)
-;;   CACHE_DIR          the per-user cache dir (getconf DARWIN_USER_CACHE_DIR), used by compilers
+;;   HOME_DIR              the user's home directory
+;;   BUS_PORT              the SLP MCP bus port on 127.0.0.1
+;;   SLP_STATE_DIR         the SLP state dir in use ($SLP_HOME, normally ~/.slp-orchestrator)
+;;   DEFAULT_SLP_STATE_DIR ~/.slp-orchestrator, denied even when SLP_STATE_DIR points elsewhere
+;;   PASEO_HOME            the Paseo home in use ($PASEO_HOME, normally ~/.paseo)
+;;   DEFAULT_PASEO_HOME    ~/.paseo, denied even when PASEO_HOME points elsewhere
+;;   PASEO_WORKTREES_RE    <PASEO_HOME>/worktrees with regex metacharacters escaped
+;;   WORKTREE_PROJECTS_RE  Paseo project-hash directory names of the listed repositories, joined with `|`
+;;   PASEO_APP_SUPPORT     ~/Library/Application Support/Paseo
+;;   PLUGIN_SOURCE_DIR     the SLP plugin checkout
+;;   CODEX_HOME_DIR        the dedicated SLP Codex home (not the Manager's ~/.codex)
+;;   CODEX_HOME_RE         CODEX_HOME_DIR with regex metacharacters escaped
+;;   GIT_REPOS_RE          escaped main-repository paths SLP runs on, joined with `|` (from $SLP_SANDBOX_REPOS)
+;;   MANAGER_CODEX_HOME    the Manager's ~/.codex
+;;   TMP_DIR               a private per-session temp dir created by the wrapper (exported to Codex as $TMPDIR)
 
 (version 1)
 (allow default)
@@ -26,7 +28,9 @@
 ;; ---------------------------------------------------------------------------
 (deny file-read* file-write*
   (subpath (param "SLP_STATE_DIR"))
+  (subpath (param "DEFAULT_SLP_STATE_DIR"))
   (subpath (param "PASEO_HOME"))
+  (subpath (param "DEFAULT_PASEO_HOME"))
   (subpath (param "PASEO_APP_SUPPORT"))
   (subpath (param "MANAGER_CODEX_HOME")))
 
@@ -50,26 +54,26 @@
   (subpath (string-append (param "HOME_DIR") "/Library/Application Support/Cursor"))
   (subpath (string-append (param "HOME_DIR") "/Library/Application Support/Code")))
 
-;; Agent worktrees live under ~/.paseo/worktrees and are the only part of ~/.paseo an agent may use.
-(allow file-read* (subpath (param "PASEO_WORKTREES")))
+;; Agent worktrees live under <Paseo home>/worktrees/<project hash>/ and are the only part of the Paseo home an agent
+;; may use. Only the listed repositories' project directories open; other projects' worktrees stay unreadable.
+(define (listed-worktrees)
+  (regex (string-append "^" (param "PASEO_WORKTREES_RE") "/(" (param "WORKTREE_PROJECTS_RE") ")(/|$)")))
+(allow file-read* (listed-worktrees))
 ;; The standalone Codex install keeps its binaries in ~/.codex/packages; they stay readable (never writable) so the
 ;; sandboxed app-server can execute. Config, auth, sessions and IPC sockets in ~/.codex remain denied.
 (allow file-read* (subpath (string-append (param "MANAGER_CODEX_HOME") "/packages")))
 
 ;; ---------------------------------------------------------------------------
 ;; Writes are denied by default and re-allowed only where agents legitimately work.
-;; This also blocks persistence outside the sandbox: shell rc files, LaunchAgents, git hooks, Codex config.
+;; This also blocks persistence outside the sandbox: shell rc files, LaunchAgents, git hooks, Codex config, and
+;; shared caches (~/.npm, ~/.cache, ~/Library/Caches, the per-user cache dir, /private/tmp) whose contents
+;; unsandboxed tools would later execute. The wrapper points package-manager caches into TMP_DIR instead.
 ;; ---------------------------------------------------------------------------
 (deny file-write*)
 
 (allow file-write*
-  (subpath (param "PASEO_WORKTREES"))
+  (listed-worktrees)
   (subpath (param "TMP_DIR"))
-  (subpath "/private/tmp")
-  (subpath (param "CACHE_DIR"))
-  (subpath (string-append (param "HOME_DIR") "/.npm"))
-  (subpath (string-append (param "HOME_DIR") "/.cache"))
-  (subpath (string-append (param "HOME_DIR") "/Library/Caches"))
   (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (literal "/dev/dtracehelper")
   (regex #"^/dev/(fd/[0-9]+|ttys[0-9]+|ptmx|ttyp[0-9a-f]+)$"))
 
@@ -77,13 +81,26 @@
 ;; against an attacker-built git dir with hooks, so the pointer stays read-only.
 (deny file-write* (regex (string-append "^" (param "PASEO_WORKTREES_RE") "/[^/]+/[^/]+/\\.git$")))
 
-;; Commits from a worktree write objects and refs into the main repository's .git. Only git's data files, and only
-;; in the repositories the Manager listed, are writable there; hooks, config, info/ and per-worktree config stay
-;; read-only because the plugin runs git unsandboxed. Other repositories on disk keep read-only refs and objects.
+;; Commits from a worktree write objects and refs into the main repository's .git, so a few paths there are writable,
+;; and only in the repositories the Manager listed. Everything else in .git stays read-only because the plugin runs
+;; git unsandboxed against it: hooks, config, info/, HEAD (the base branch checkout), packed-refs, every branch
+;; outside slp/, and packs, alternates and commit-graphs (each of which can substitute the content of existing
+;; commits). Other repositories on disk keep read-only refs and objects.
+(define (listed-git suffix)
+  (regex (string-append "^(" (param "GIT_REPOS_RE") ")/\\.git/" suffix)))
+;; SLP branches only (slp/<run>/...). main and other base branches cannot be moved from inside the sandbox.
 (allow file-write*
-  (regex (string-append "^(" (param "GIT_REPOS_RE") ")/\\.git/(objects|refs|logs)/"))
-  (regex (string-append "^(" (param "GIT_REPOS_RE") ")/\\.git/(packed-refs|packed-refs\\.lock)$"))
-  (regex (string-append "^(" (param "GIT_REPOS_RE") ")/\\.git/worktrees/[^/]+/(HEAD|ORIG_HEAD|FETCH_HEAD|MERGE_HEAD|MERGE_MSG|AUTO_MERGE|COMMIT_EDITMSG|index|logs/.*)(\\.lock)?$")))
+  (listed-git "refs/heads/slp/")
+  (listed-git "logs/refs/heads/slp/")
+  (listed-git "worktrees/[^/]+/(HEAD|ORIG_HEAD|FETCH_HEAD|MERGE_HEAD|MERGE_MSG|MERGE_MODE|AUTO_MERGE|COMMIT_EDITMSG|index|logs/.*)(\\.lock)?$"))
+;; Loose objects are create-only: git writes a tmp_obj_* file and links or renames it to its hash name, which must not
+;; exist yet. Overwriting, deleting, renaming, re-timing or re-permissioning an existing object (which changes the
+;; content an existing commit resolves to) is denied.
+(allow file-write-create
+  (listed-git "objects/[0-9a-f][0-9a-f]$")
+  (listed-git "objects/[0-9a-f][0-9a-f]/[0-9a-f]+$"))
+(allow file-write*
+  (listed-git "objects/[0-9a-f][0-9a-f]/tmp_obj_[A-Za-z0-9]+$"))
 (deny file-write*
   (regex #"/\.git/hooks(/|$)")
   (regex #"/\.git/(config|config\.worktree)(\.lock)?$")
@@ -107,7 +124,8 @@
 ;; R1 — network. Loopback is denied as a whole (daemon WebSocket, Paseo Agent MCP, any other local service),
 ;; then re-opened only for the SLP bus and a fixed connect-only pool below the macOS ephemeral range (49152+), for
 ;; services the Manager starts outside the sandbox (e.g. a test database); a daemon or bus port chosen by the OS can
-;; never fall inside it. Remote hosts stay reachable for installs.
+;; never fall inside it. Remote hosts stay reachable for installs. `localhost:*` also covers this host's own LAN
+;; addresses (verified against services bound to *:port), so LAN-bound local services are denied as well.
 ;; ---------------------------------------------------------------------------
 ;; Both denies come before every allow: a `remote unix-socket` deny placed after the loopback port allows was
 ;; observed to cancel some of them (macOS 27), so the order here is load-bearing.
@@ -118,7 +136,7 @@
 (allow network-outbound
   (remote unix-socket (path-literal "/private/var/run/mDNSResponder"))
   (remote unix-socket (subpath (param "TMP_DIR")))
-  (remote unix-socket (subpath (param "PASEO_WORKTREES"))))
+  (remote unix-socket (path-regex (string-append "^" (param "PASEO_WORKTREES_RE") "/(" (param "WORKTREE_PROJECTS_RE") ")/"))))
 (allow network-outbound (remote ip (string-append "localhost:" (param "BUS_PORT"))))
 (allow network-outbound
   (remote ip "localhost:39001") (remote ip "localhost:39002") (remote ip "localhost:39003")
@@ -139,6 +157,8 @@
 ;; Apple Events (osascript → Terminal "do script", System Events keystrokes into the Paseo window).
 (deny appleevent-send)
 ;; LaunchServices (`open`) starts applications outside the sandbox; the window server and pasteboard give GUI control.
+;; securityd (SecurityServer) serves keychain items to any same-user process the item's ACL trusts, which file
+;; rules on ~/Library/Keychains do not cover. HTTPS certificate checks use trustd and keep working.
 (deny mach-lookup
   (global-name "com.apple.coreservices.launchservicesd")
   (global-name-prefix "com.apple.lsd.")
@@ -146,7 +166,12 @@
   (global-name "com.apple.windowserver.active")
   (global-name-prefix "com.apple.pasteboard.")
   (global-name "com.apple.screencapture.interactive")
-  (global-name-prefix "com.apple.accessibility."))
+  (global-name-prefix "com.apple.accessibility.")
+  (global-name "com.apple.SecurityServer")
+  (global-name "com.apple.securityd.xpc"))
+;; cfprefsd writes preferences on the caller's behalf, outside the file rules above: without this an agent could
+;; set another application's defaults (for example a terminal's startup command). Reading preferences stays allowed.
+(deny user-preference-write)
 ;; Signals and process inspection only within this sandbox: no killing or attaching to the daemon.
 (deny signal)
 (allow signal (target same-sandbox))

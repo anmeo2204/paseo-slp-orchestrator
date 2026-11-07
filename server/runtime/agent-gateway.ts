@@ -6,7 +6,8 @@ import { BUS_SERVER_NAME, type SlpRole } from "../../shared/roles";
 import type { AgentRecord } from "../../shared/state";
 import { toolNamesForRole } from "../bus/tool-schemas";
 import { systemPromptFor, type StagePromptContext } from "../prompts/system-prompts";
-import { resolveAgentSettings } from "../project-prompts/agent-settings";
+import { assertAgentProviderAllowed, resolveAgentSettings } from "../project-prompts/agent-settings";
+import { runOrchestration } from "../../shared/orchestration";
 import { reopenOrRestoreWorktreeWorkspace } from "../git/worktree";
 import type { RunStore } from "../store/run-store";
 import {
@@ -218,6 +219,12 @@ export class AgentGateway {
         preapproved: busToolNames.map((tool) => ({ kind: "mcp" as const, server: BUS_SERVER_NAME, tool })),
       };
       const openAgentWithSettings = async (activeModelSettings: typeof modelSettings): Promise<void> => {
+        // Every SLP agent, including the peer-model fallback below, is requested from Paseo only through here.
+        assertAgentProviderAllowed(
+          runOrchestration(this.store.require(spec.runId)).allowedAgentProviders,
+          activeModelSettings.provider,
+          `${spec.role} agent '${spec.title}'`,
+        );
         const selectedProviderId = activeModelSettings.provider.split("/", 1)[0];
         const providerFeatureValues = defaultFeatureValuesForProvider(activeModelSettings.provider);
         const baseSessionConfig = {
