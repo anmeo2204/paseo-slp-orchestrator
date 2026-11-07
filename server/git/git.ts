@@ -67,11 +67,26 @@ export async function listChangedFiles(
   return [...new Set([...committedPaths, ...uncommittedPaths])];
 }
 
-// Final approval: merge the integration branch into the base branch checked out in the repo.
+// Only full object names are accepted, so an abbreviated SHA can never resolve to a different commit later.
+const FULL_COMMIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+export function isFullCommitSha(candidate: string): boolean {
+  return FULL_COMMIT_SHA.test(candidate);
+}
+
+// The refs/heads/ prefix keeps a tag or remote-tracking ref with the same name from being resolved instead.
+export async function resolveLocalBranchCommit(repoPath: string, branchName: string): Promise<string> {
+  return (await runGit(repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${branchName}^{commit}`])).trim();
+}
+
+// Final approval: merge the reviewed integration commit into the base branch checked out in the repo.
+// The commit is merged by SHA, so the integration branch moving after the caller's staleness check cannot change
+// what lands; the caller decides whether a moved branch makes the approval stale.
 export async function mergeIntegrationIntoBase(
   repoPath: string,
   baseBranch: string,
   integrationBranch: string,
+  reviewedCommit: string | null,
 ): Promise<string> {
   const checkedOutBranch = await currentBranchName(repoPath);
   // Refuses to merge into whatever happens to be checked out: the human may have switched branches since the run started.
@@ -85,9 +100,14 @@ export async function mergeIntegrationIntoBase(
   if (integrationBranch === baseBranch) {
     return (await runGit(repoPath, ["rev-parse", "HEAD"])).trim();
   }
+  if (!reviewedCommit || !isFullCommitSha(reviewedCommit)) {
+    throw new Error(`No reviewed commit is pinned for '${integrationBranch}', so there is nothing approved to merge`);
+  }
+  const resolvedCommit = (await runGit(repoPath, ["rev-parse", "--verify", "--quiet", `${reviewedCommit}^{commit}`]).catch(() => "")).trim();
+  if (resolvedCommit !== reviewedCommit) throw new Error(`Reviewed commit ${reviewedCommit} is not a commit in ${repoPath}`);
   // --no-ff keeps one merge commit per run so the whole SLP result can be reverted in one step.
   try {
-    await runGit(repoPath, ["merge", "--no-ff", "-m", `SLP: merge ${integrationBranch}`, integrationBranch]);
+    await runGit(repoPath, ["merge", "--no-ff", "-m", `SLP: merge ${integrationBranch} at ${reviewedCommit.slice(0, 12)}`, reviewedCommit]);
   } catch (mergeError) {
     // a conflicted merge leaves MERGE_HEAD in the human's own checkout; undo it before reporting the failure
     await runGit(repoPath, ["merge", "--abort"]).catch(() => undefined);

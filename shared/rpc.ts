@@ -132,11 +132,15 @@ export const setRunModeRpc = defineRpc({
   output: z.object({ ok: z.boolean() }),
 });
 
+// A full SHA-1 or SHA-256 object name; abbreviations are refused so an approval cannot match a different commit.
+const ReviewedCommitSchema = z.string().regex(/^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/);
+
 // Approves the gate of one task, or the run level gate when taskId is omitted.
 export const approveGateRpc = defineRpc({
   name: "slp.gate.approve",
   // note is optional and currently unused by the UI; it is kept so approvals can later carry a reason in the audit log.
-  input: z.object({ runId: z.string(), taskId: z.string().optional(), note: z.string().optional() }),
+  // expectedCommit applies to the final_approval gate only; see approveMainRpc.
+  input: z.object({ runId: z.string(), taskId: z.string().optional(), note: z.string().optional(), expectedCommit: ReviewedCommitSchema.optional() }),
   output: z.object({ ok: z.boolean(), message: z.string() }),
 });
 
@@ -166,10 +170,14 @@ export const resumeTaskRpc = defineRpc({
   output: z.object({ ok: z.boolean(), message: z.string() }),
 });
 
-// The Supreme Manager's final button: merge the integration branch into the base branch.
+// The Supreme Manager's final button: merge the reviewed integration commit (run.finalReview) into the base branch.
+// The merge uses the pinned SHA and is refused if the integration branch moved since review. `expectedCommit` is the
+// commit the caller displayed; a mismatch is refused as stale. It is optional for older clients, which still merge
+// only the pinned commit. Like every plugin RPC this is not caller-authenticated, and a matching SHA proves only that
+// the caller knew the commit, not who the caller is (PHASE1_F2_TRUST_BOUNDARY_REVIEW.md).
 export const approveMainRpc = defineRpc({
   name: "slp.run.approve_main",
-  input: z.object({ runId: z.string() }),
+  input: z.object({ runId: z.string(), expectedCommit: ReviewedCommitSchema.optional() }),
   output: z.object({ ok: z.boolean(), message: z.string() }),
 });
 

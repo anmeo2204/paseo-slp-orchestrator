@@ -346,7 +346,7 @@ export async function restoreRun(ctx: PipelineContext, runId: string): Promise<R
       mutableRun.mailbox.push(
         stageMail(
           activeSupervisorAgentId,
-          reportForSupervisor(mutableRun.finalReport, mutableRun.baseBranch, mutableRun.integrationBranch),
+          reportForSupervisor(mutableRun.finalReport, mutableRun.baseBranch, mutableRun.integrationBranch, mutableRun.finalReview?.commit ?? null),
           "slp_present_to_manager",
         ),
       );

@@ -32,6 +32,8 @@ spec maps onto Paseo and which parts are enforced softly.
    `ready_for_merge` -> Master Lead merges and calls `slp_archive_task`.
 6. All merged -> `slp_report` -> Supervisor audits -> `slp_present_to_manager` -> human presses
    "Approve -> main" (`slp.run.approve_main`).
+   (Current engine: `slp_report` pins the QA-verified commit as `run.finalReview`; every final merge merges that
+   SHA and refuses if the integration branch moved. See `docs/audits/PHASE1_FINAL_MERGE_PINNING.md`.)
 
 ## Enforcement (soft by design)
 

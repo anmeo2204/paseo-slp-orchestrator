@@ -82,9 +82,12 @@ export function delegationMessage(acceptanceCriteria: string, context?: Delegate
   return messageSections.join("\n\n");
 }
 
-export function reportForSupervisor(summary: string, baseBranch: string, integrationBranch: string): string {
-  // Calling slp_present_to_manager automatically merges integrationBranch into baseBranch when the base checkout is clean.
-  return `The Lead reports the verified result on ${integrationBranch}:\n${summary}\nRead slp_list_pipelines and slp_get_pipeline, inspect git diff ${baseBranch}...${integrationBranch}, and independently verify the acceptance criteria and every scenario of the human-approved product spec (slp_get_run productSpec) against the QA Lead's per-scenario results. If satisfied call slp_present_to_manager (which automatically merges ${integrationBranch} into ${baseBranch} and completes the run); otherwise call slp_request_rework.`;
+export function reportForSupervisor(summary: string, baseBranch: string, integrationBranch: string, reviewedCommit: string | null = null): string {
+  // Calling slp_present_to_manager automatically merges the pinned commit into baseBranch when the base checkout is clean.
+  if (!reviewedCommit) {
+    return `The Lead reports the verified result on ${integrationBranch}:\n${summary}\nRead slp_list_pipelines and slp_get_pipeline, inspect git diff ${baseBranch}...${integrationBranch}, and independently verify the acceptance criteria and every scenario of the human-approved product spec (slp_get_run productSpec) against the QA Lead's per-scenario results. If satisfied call slp_present_to_manager (which automatically merges ${integrationBranch} into ${baseBranch} and completes the run); otherwise call slp_request_rework.`;
+  }
+  return `The Lead reports the verified result on ${integrationBranch}, pinned for final approval at commit ${reviewedCommit}:\n${summary}\nRead slp_list_pipelines and slp_get_pipeline, inspect git diff ${baseBranch}...${reviewedCommit}, and independently verify the acceptance criteria and every scenario of the human-approved product spec (slp_get_run productSpec) against the QA Lead's per-scenario results. Review that commit, not whatever ${integrationBranch} points at later, and do not change the branch yourself. If satisfied call slp_present_to_manager: it merges exactly ${reviewedCommit} into ${baseBranch} and completes the run, and it refuses to merge if ${integrationBranch} has moved since this report. Otherwise call slp_request_rework.`;
 }
 
 export function reworkNotice(feedback: string): string {

@@ -199,6 +199,7 @@ Sources:
 | **Functional orchestration** | **Demonstrated live (partial)** | Run #15 on `codex`, FULL_AUTO: spec submission, approval gate, delegation, pipelines, QA and auto-merge, with tests reproduced. Scenario A is PARTIAL (escalation step not exercised); B–F not run. Automated suite: 429/429. |
 | **Approval enforcement through MCP tools** | **Enforced** | No bus tool writes an approved Spec record. Delegation is refused without a matching approval, in every mode and per feature. Live: Run #15 refused delegation before approval. Automated: F2 tests. |
 | **Approval enforcement against agent shell access** | **NOT enforced — unresolved, design-required** | The daemon admits every local client as `owner`, and plugin RPCs carry no caller identity. An agent with shell access can invoke `slp.spec.approve`, the gate approvals or `slp.run.approve_main`, or edit the run store. No in-plugin fix exists. Requires OS isolation (§7.3) and upstream caller identity (§7.6). |
+| **Final merge bound to the reviewed commit** | **Enforced in the engine (automated); not live-validated** | Added 2026-11-07, §7.7. Every final merge (FULL_AUTO auto-merge and both manual RPCs) merges the commit pinned at `slp_report` by SHA and refuses if the integration branch moved or the approval names another commit. Binds *what* merges, not *who* approved. |
 | **Provider-specific isolation readiness** | **Codex: prototype validated, not deployed. Claude / Cursor: none.** | Seatbelt enforces R1–R4 for Codex. After the 2026-11-07 hardening, 106 probes, controls and state checks match, with 2 Apple Events probes skipped (feasibility §12). Deployment needs: Manager approval of a global Paseo provider change; a plugin reload (the provider-ID compatibility change is implemented but not deployed); and a live validation run. Claude (`bypassPermissions`) and Cursor (ACP) agents have no isolation path yet. |
 
 The Phase 1 F2 statement must read, until the isolation in §7.3 is deployed and live-validated:
@@ -254,5 +255,25 @@ All probes matched on this machine. The proposed configuration change, rollback,
 3. **Upstream caller identity.** Manager approval to publish `PASEO_UPSTREAM_PLUGIN_RPC_AUTH_ISSUE.md`; then the plugin adopts `requires: "interactive-owner"` once Paseo supports it.
 4. **Live scenarios.** Scenario A step A8 (escalation), Scenario C (F1 Brief revision during a live shell command), and Scenarios B, D, E and F (`PHASE1_LIVE_TEST_RUNBOOK.md`).
 5. **Daemon-side Codex home** for session forking under the sandbox (feasibility residual 9). This is verified only by the first live sandboxed run.
+
+### 7.7 Final-merge commit pinning (implemented 2026-11-07)
+
+Details: `PHASE1_FINAL_MERGE_PINNING.md`.
+
+- **Root cause.** The final merge resolved the integration branch by name at merge time, and no record tied the
+  review to a commit. Any writer of the QA branch ref between QA closing and the merge (a peer, the QA Lead, the
+  Supervisor's shell, any same-user process) could change what landed, in FULL_AUTO and in manual approval.
+- **Fix.** `slp_report` pins the commit the closed QA pipeline verified (`run.finalReview`) and is refused if the
+  branch moved after QA closed. `approveMain`, the single path for all final merges, serializes per run, refuses
+  stale reviews (branch moved or deleted, wrong integration branch, `expectedCommit` mismatch, no pin) with a
+  `run.final_merge_refused` audit row, and merges the pinned SHA with `git merge --no-ff <sha>`. There is no
+  fallback to the branch tip. A refused run can only proceed through `slp_request_rework`.
+- **Compatibility.** `expectedCommit` is optional on the RPCs; the panel sends it. Runs stored before pinning fall
+  back to the QA pipeline's recorded verified commit, never to the tip. Skill, seeded workflows and tool
+  descriptions updated in lockstep.
+- **Tests.** 19 new regression tests (`tests/final-merge-pinning.test.ts`) plus one skill-contract test.
+  `npm run typecheck` clean; `npx vitest run` **508/508** across 50 files (baseline 488/488).
+- **Does not change** blocker 1 or 3 in §7.6: the RPCs are still unauthenticated, and a pinned SHA is not evidence
+  of the Manager's identity. It closes the review-to-merge race for content only.
 
 **Recommendation:** keep Phase 1 **open**. Functional orchestration and MCP-level approval enforcement are accepted on the evidence above. Security acceptance waits for blockers 1, 3 and the live scenarios, with blocker 2 resolved by either isolation or a Codex-only scope decision. Phase 2 has not been started.

@@ -25,8 +25,10 @@ export function RunControls({ styles, theme, run, readOnly = false, onRestored }
   const controlErrorMessage = describeRpcError(
     approveGate.error ?? approveMain.error ?? abortRun.error ?? restoreRun.error,
   );
-  // Runs merge into baseBranch automatically on Supervisor acceptance; this fallback only appears if a dirty base checkout blocked auto-merge.
+  // Runs merge into baseBranch automatically on Supervisor acceptance; this fallback appears when the auto-merge was blocked.
   const canApproveMain = run.status === "awaiting_user";
+  // Sent with every final approval so the daemon refuses it if the pinned commit changed after this screen was drawn.
+  const reviewedCommit = run.finalReview?.commit;
   const isRunFinished = run.status === "completed" || run.status === "aborted";
   const canRestoreRun = run.status === "aborted" && !readOnly;
 
@@ -54,9 +56,15 @@ export function RunControls({ styles, theme, run, readOnly = false, onRestored }
             accessibilityLabel="Approve run level gate and continue"
             disabled={approveGate.isPending}
             // Omitting taskId targets the run level gate (see approveGateRpc).
-            onPress={() => approveGate.mutate({ runId: run.id })}
+            onPress={() => approveGate.mutate({ runId: run.id, expectedCommit: reviewedCommit })}
           />
         </View>
+      ) : null}
+
+      {canApproveMain && run.finalReview ? (
+        <Text style={styles.mutedText} selectable>
+          Reviewed commit: {run.finalReview.integrationBranch} @ {run.finalReview.commit}
+        </Text>
       ) : null}
 
       <View style={styles.row}>
@@ -65,9 +73,11 @@ export function RunControls({ styles, theme, run, readOnly = false, onRestored }
             styles={styles}
             tone="primary"
             label="Approve -> main"
-            accessibilityLabel={`Approve merging ${run.integrationBranch} into ${run.baseBranch}`}
+            accessibilityLabel={reviewedCommit
+              ? `Approve merging reviewed commit ${reviewedCommit.slice(0, 12)} of ${run.integrationBranch} into ${run.baseBranch}`
+              : `Approve merging ${run.integrationBranch} into ${run.baseBranch}`}
             disabled={approveMain.isPending}
-            onPress={() => approveMain.mutate({ runId: run.id })}
+            onPress={() => approveMain.mutate({ runId: run.id, expectedCommit: reviewedCommit })}
           />
         ) : null}
         {canRestoreRun ? (

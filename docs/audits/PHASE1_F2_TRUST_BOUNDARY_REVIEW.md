@@ -117,9 +117,15 @@ approves a pipeline gate, or approves a final merge.** This is the one boundary 
 | RPC | Handler → effect | Caller check | Reachable by an agent with a shell |
 |---|---|---|---|
 | `slp.spec.approve` | `approveProductSpec` → `specApprovals[i].status = "approved"`, `approvedVia = "slp-orchestrator-ui"` (constant) → unblocks `slp_delegate` | none | **Yes** |
-| `slp.gate.approve` | `approveRunGate` → `approveMain` → merges the integration branch into the base branch, completes the run | none | **Yes** |
+| `slp.gate.approve` | `approveRunGate` → `approveMain` → merges the pinned reviewed commit (`run.finalReview`) into the base branch, completes the run | none | **Yes** |
 | `slp.pipeline.approve_gate` | `approvePipelineGate` → clears a SEMI_AUTO / STEP_BY_STEP_DEBUG pipeline gate and opens the next stage | none | **Yes** |
-| `slp.run.approve_main` | `approveMain` → merge into base, completes the run | none | **Yes** |
+| `slp.run.approve_main` | `approveMain` → merges the pinned reviewed commit into base, completes the run | none | **Yes** |
+
+*Update (final-merge commit pinning, `PHASE1_FINAL_MERGE_PINNING.md`):* both final-merge RPCs now merge only the
+commit pinned at `slp_report` and refuse if the integration branch moved or the caller's `expectedCommit` differs.
+This removes the review-to-merge race for the content that lands. It does not change this table's last column:
+the caller is still unauthenticated, and knowing the pinned SHA (readable via `slp.run.get` or `slp_get_run`) is
+not evidence of being the Manager.
 
 The pending record must already exist and the call must name its hash or id. Both are readable by the agent:
 the Supervisor submitted the spec, and `slp_get_run` and the SQLite store expose the hash.

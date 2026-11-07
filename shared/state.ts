@@ -147,6 +147,20 @@ export const ProductSpecApprovalSchema = z.object({
 });
 export type ProductSpecApproval = z.infer<typeof ProductSpecApprovalSchema>;
 
+// The exact integration commit the Supervisor and the Manager review, pinned when the QA Lead reports.
+// Final approval merges this SHA, never the branch name, and refuses if the branch has since moved.
+// The SHA binds an approval to content; it is not evidence of who approved.
+export const FINAL_REVIEW_SOURCES = ["qa_verified", "integration_tip"] as const;
+export const FinalReviewSchema = z.object({
+  integrationBranch: z.string(),
+  commit: z.string(),
+  // "qa_verified": the commit a closed QA pipeline recorded. "integration_tip": a run without a QA Lead.
+  source: z.enum(FINAL_REVIEW_SOURCES),
+  qaPipelineId: z.string().nullable().default(null),
+  pinnedAt: z.string(),
+});
+export type FinalReview = z.infer<typeof FinalReviewSchema>;
+
 export const RunSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -191,6 +205,9 @@ export const RunSchema = z.object({
   // Run-level gate, used only for final_approval; task gates live on the task.
   gate: GateSchema.nullable().default(null),
   finalReport: z.string().nullable().default(null),
+  // Null before the first report, when the run merges nothing (integration branch is the base branch), and on
+  // runs stored before pinning existed.
+  finalReview: FinalReviewSchema.nullable().default(null),
   // Keep the Supervisor's independent assessment alongside the Lead's integration report.
   supervisorReport: z.string().nullable().default(null),
   // Lead may consult domain experts before tasks exist; those reports belong to the run itself.

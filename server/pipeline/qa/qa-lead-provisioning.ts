@@ -24,6 +24,7 @@ export async function provisionQaWorkspace(ctx: PipelineContext, runId: string):
     mutableRun.devCwd = mutableRun.repoPath;
     mutableRun.devWorkspaceId = mutableRun.supervisorWorkspaceId;
     mutableRun.qaLeadAgentId = "";
+    mutableRun.finalReview = null;
   });
   const runBeforeCreation = ctx.store.require(runId);
   // Each delegation cycle gets its own branch name because the previous cycle's QA branch may still be deleting.

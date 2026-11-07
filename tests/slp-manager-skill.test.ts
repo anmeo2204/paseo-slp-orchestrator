@@ -215,7 +215,25 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).toContain("Allowed agent providers");
     expect(skillMarkdown).toContain("refuses to start");
     expect(skillMarkdown).toContain("does not show that the provider's process is sandboxed");
-    expect(skillMarkdown).toMatch(/7\. \*\*Models and the provider allowlist:\*\*/);
+    expect(skillMarkdown).toMatch(/8\. \*\*Models and the provider allowlist:\*\*/);
+  });
+
+  // Agents that think approval covers "the QA branch" would keep committing to it after review; the skill, the seeded
+  // workflows and the tool descriptions must all say the merge is bound to the pinned commit.
+  it("documents final-merge commit pinning in the skill, the seeded workflows and the bus tools", () => {
+    const skillMarkdown = renderSlpManagerSkillMarkdown();
+    expect(skillMarkdown).toContain("Final approval is pinned to one commit.");
+    expect(skillMarkdown).toContain("merges that SHA, never the branch name");
+    expect(skillMarkdown).toContain("it does not show who approved");
+    expect(skillMarkdown).toMatch(/7\. \*\*Final-merge commit pinning:\*\*/);
+    expect(skillMarkdown).toContain("Nothing may be committed to the QA branch between the two");
+    const { supervisor, qaLead } = defaultProjectPrompts();
+    expect(supervisor.workflow).toContain("Final review is pinned to one commit");
+    expect(supervisor.workflow).toContain("merges exactly the pinned commit");
+    expect(supervisor.workflow).toContain("call slp_request_rework so the current branch is verified again");
+    expect(qaLead?.workflow).toContain("nothing may be committed to the QA branch after slp_finalize_pipeline");
+    expect(BUS_TOOL_DEFINITIONS.slp_report.description).toContain("pin the QA-verified commit");
+    expect(BUS_TOOL_DEFINITIONS.slp_present_to_manager.description).toContain("Merges exactly the commit pinned by slp_report");
   });
 
   it("documents short Codex model IDs under codex-slp and warns against codex/ models there", () => {

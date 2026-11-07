@@ -170,9 +170,9 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
     return { ok: true };
   });
 
-  server.handle(approveGateRpc, async ({ runId, taskId }, { paseo }) => {
+  server.handle(approveGateRpc, async ({ runId, taskId, expectedCommit }, { paseo }) => {
     ctx.holder.capture(paseo);
-    return { ok: true, message: await approveRunGate(ctx, runId, taskId ?? null) };
+    return { ok: true, message: await approveRunGate(ctx, runId, taskId ?? null, { expectedCommit }) };
   });
 
   // The only writer of an approved Product Spec record. The handler context carries no caller identity, so this
@@ -193,9 +193,9 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
     throw new Error("This run uses the retired task engine; start a new run");
   });
 
-  server.handle(approveMainRpc, async ({ runId }, { paseo }) => {
+  server.handle(approveMainRpc, async ({ runId, expectedCommit }, { paseo }) => {
     ctx.holder.capture(paseo);
-    return { ok: true, message: await approveMain(ctx, runId, rpcOrigin(approveMainRpc.name)) };
+    return { ok: true, message: await approveMain(ctx, runId, rpcOrigin(approveMainRpc.name), { expectedCommit }) };
   });
 
   // Aborting or archiving closes agents through the SDK, so the holder must be populated first.

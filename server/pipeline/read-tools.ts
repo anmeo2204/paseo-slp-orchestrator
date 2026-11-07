@@ -33,6 +33,8 @@ export function readRun(ctx: PipelineContext, caller: BusCaller): string {
     leadWorktree: run.devCwd,
     qaLeadAgentId: run.qaLeadAgentId || null,
     finalReport: run.finalReport,
+    // The commit final approval will merge; the Supervisor reviews this, not the moving branch tip.
+    finalReview: run.finalReview,
     supervisorReport: run.supervisorReport,
     leads,
     pipelines: Object.values(run.pipelines).map(({ id, name, kind, status, worktree, leadAgentId, currentStageIndex }) => ({

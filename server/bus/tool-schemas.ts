@@ -135,13 +135,13 @@ export const BUS_TOOL_DEFINITIONS = {
   },
   slp_present_to_manager: {
     roles: ["supervisor"],
-    description: "Declare the result verified and present it to the Supreme Manager for final approval.",
+    description: "Declare the result verified and present it to the Supreme Manager for final approval. Merges exactly the commit pinned by slp_report and refuses if the QA branch moved since.",
     input: z.object({ report: z.string().trim().min(1) }),
   },
   // Only the QA Lead reports, so the Supervisor never receives a merged result that nobody verified.
   slp_report: {
     roles: ["qa_lead"],
-    description: "Report the verified QA branch result to the Supervisor.",
+    description: "Report the verified QA branch result to the Supervisor and pin the QA-verified commit for final approval. Refused if the QA branch moved after the QA pipeline closed.",
     input: z.object({ summary: z.string().trim().min(1) }),
   },
   // Enables the Supervisor or Lead to manually respawn dead, archived or stalled sessions on demand.

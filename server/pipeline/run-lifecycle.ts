@@ -2,7 +2,7 @@
 // snapshots, but every new run advances through persisted PipelineState records instead.
 import { randomUUID } from "node:crypto";
 import { ROLE_LABELS, isPipelineLeadRole, type RunMode } from "../../shared/roles";
-import type { ProviderChoices, Run } from "../../shared/state";
+import type { FinalReview, ProviderChoices, Run } from "../../shared/state";
 import { DEFAULT_ORCHESTRATION_SETTINGS, type OrchestrationSettings } from "../../shared/orchestration";
 import { assertGitRepository, currentBranchName, mergeIntegrationIntoBase } from "../git/git";
 import { openSupervisorWorkspace } from "../git/worktree";
@@ -12,6 +12,13 @@ import { reportForSupervisor, reworkNotice, supervisorBriefing } from "../prompt
 import { qaReworkNotice } from "../prompts/qa-messages";
 import { delegate, ensureActiveMasterLead } from "./delegation";
 import { qaVerificationComplete, runHasQaLead } from "./qa/qa-phase-state";
+import {
+  StaleFinalReviewError,
+  isFinalMergeInFlight,
+  pinFinalReview,
+  requireCurrentFinalReview,
+  withFinalMergeLock,
+} from "./final-review";
 import {
   archiveAgentSubtree,
   archiveOwnedWorkspaces,
@@ -135,6 +142,7 @@ export async function startRun(ctx: PipelineContext, input: StartRunInput) {
     questions: [],
     gate: null,
     finalReport: null,
+    finalReview: null,
     supervisorReport: null,
     peerReports: [],
     forkDegradedReason: null,
@@ -166,7 +174,7 @@ export async function startRun(ctx: PipelineContext, input: StartRunInput) {
   return { runId, supervisorAgentId: supervisor.agentId, supervisorWorkspaceId: supervisorWorkspace.workspaceId };
 }
 
-export function report(ctx: PipelineContext, runId: string, summary: string, callerAgentId?: string): string {
+export async function report(ctx: PipelineContext, runId: string, summary: string, callerAgentId?: string): Promise<string> {
   const run = ctx.store.require(runId);
   // A QA Lead from a retired cycle must not report on the current cycle's QA branch.
   if (runHasQaLead(run) && callerAgentId && callerAgentId !== run.qaLeadAgentId) {
@@ -182,8 +190,11 @@ export function report(ctx: PipelineContext, runId: string, summary: string, cal
   if (run.status !== "running" || !allPipelinesIntegrated(run)) {
     throw new ToolError(`Cannot report until every pipeline is integrated. Current pipelines: ${pipelineStatuses}.`);
   }
+  const finalReview = await pinFinalReview(run);
   ctx.store.mutate(runId, (mutableRun) => {
+    if (mutableRun.status !== "running") throw new ToolError(`Cannot report while run is '${mutableRun.status}'.`);
     mutableRun.finalReport = summary;
+    mutableRun.finalReview = finalReview;
     mutableRun.status = "reporting";
     for (const agentRecord of Object.values(mutableRun.agents)) {
       if (isPipelineLeadRole(agentRecord.role) && agentRecord.awaitingTool === "slp_report") {
@@ -193,9 +204,18 @@ export function report(ctx: PipelineContext, runId: string, summary: string, cal
       }
     }
     mutableRun.mailbox.push(stageMail(mutableRun.supervisorAgentId,
-      reportForSupervisor(summary, mutableRun.baseBranch, mutableRun.integrationBranch), "slp_present_to_manager"));
+      reportForSupervisor(summary, mutableRun.baseBranch, mutableRun.integrationBranch, finalReview?.commit ?? null), "slp_present_to_manager"));
   });
-  return "Report sent to the Supervisor. End your turn.";
+  ctx.logEvent(runId, {
+    taskId: null, from: callerAgentId ?? "pipeline", to: "supervisor", kind: "run.final_review_pinned",
+    summary: finalReview
+      ? `${finalReview.integrationBranch} @ ${finalReview.commit} (${finalReview.source})`
+      : `nothing to merge: ${run.integrationBranch} is the base branch`,
+    outcome: "info",
+  });
+  return finalReview
+    ? `Report sent to the Supervisor with ${finalReview.integrationBranch} pinned at ${finalReview.commit.slice(0, 12)}. Do not change the QA branch; any new commit makes the final approval stale. End your turn.`
+    : "Report sent to the Supervisor. End your turn.";
 }
 
 export async function requestRework(ctx: PipelineContext, runId: string, feedback: string): Promise<string> {
@@ -203,6 +223,10 @@ export async function requestRework(ctx: PipelineContext, runId: string, feedbac
   // Allow rework during initial reporting, at the final approval gate, or when follow-up changes are requested after completion.
   if (run.status !== "reporting" && run.status !== "awaiting_user" && run.status !== "completed") {
     throw new ToolError(`Cannot request rework while run is '${run.status}'.`);
+  }
+  // Rework would clear the pin the in-flight merge is using; once it finishes the run is completed and takes follow-ups.
+  if (isFinalMergeInFlight(runId)) {
+    throw new ToolError("The final merge is in progress. Wait for it to finish, then request a follow-up if changes are still needed.");
   }
   // The QA Lead owns the verified QA branch, so fixes and re-verification stay there instead of opening new feature worktrees.
   if (runHasQaLead(run)) {
@@ -215,6 +239,7 @@ export async function requestRework(ctx: PipelineContext, runId: string, feedbac
     mutableRun.masterLeadAgentId = activeMasterLeadId;
     mutableRun.status = "planning";
     mutableRun.gate = null;
+    mutableRun.finalReview = null;
     if (!Object.hasOwn(mutableRun.pipelineWorkspaces, workspace.workspaceId)) {
       mutableRun.pipelineWorkspaces[workspace.workspaceId] = { ...workspace, owned: false };
     }
@@ -245,6 +270,7 @@ function requestQaRework(ctx: PipelineContext, runId: string, feedback: string):
     // Planning makes slp_define_pipeline the QA Lead's owed tool, which recovery and nudges then enforce.
     mutableRun.status = "planning";
     mutableRun.gate = null;
+    mutableRun.finalReview = null;
     mutableRun.masterLeadAgentId = mutableRun.qaLeadAgentId;
     const qaLeadRecord = mutableRun.agents[mutableRun.qaLeadAgentId];
     if (qaLeadRecord) {
@@ -288,15 +314,21 @@ export async function presentToManager(ctx: PipelineContext, runId: string, asse
     return `${mergeSummary}. Result presented and merged into ${run.baseBranch}. Give the Supreme Manager your short Vietnamese report in chat, then end your turn.`;
   } catch (autoMergeError) {
     const failureNote = autoMergeError instanceof Error ? autoMergeError.message : String(autoMergeError);
+    const reviewIsStale = autoMergeError instanceof StaleFinalReviewError;
     ctx.store.mutate(runId, (mutableRun) => {
       if (mutableRun.status === "awaiting_user") {
         mutableRun.gate = {
           kind: "final_approval",
           openedAt: new Date().toISOString(),
-          note: `Auto-merge into '${mutableRun.baseBranch}' was blocked (${failureNote}). Clean the base checkout and approve to merge.`,
+          note: reviewIsStale
+            ? `The final merge into '${mutableRun.baseBranch}' was refused (${failureNote}). Approving cannot merge it; the result must be re-verified through rework.`
+            : `Auto-merge into '${mutableRun.baseBranch}' was blocked (${failureNote}). Clean the base checkout and approve to merge.`,
         };
       }
     });
+    if (reviewIsStale) {
+      return `Result verified, but the final merge into ${run.baseBranch} was refused: ${failureNote} Call slp_request_rework so the QA Lead re-verifies the current branch, tell the Supreme Manager in Vietnamese, then end your turn.`;
+    }
     return `Result verified, but auto-merge into ${run.baseBranch} was blocked: ${failureNote}. Inform the Supreme Manager in Vietnamese, then end your turn.`;
   }
 }
@@ -308,15 +340,43 @@ async function retireRunResources(ctx: PipelineContext, runId: string): Promise<
   await archiveOwnedWorkspaces(ctx, ctx.store.require(runId));
 }
 
-export async function approveMain(ctx: PipelineContext, runId: string, origin: ActionOrigin): Promise<string> {
+export interface ApproveMainOptions {
+  // The commit the approving client displayed. Omitted by the engine and by older clients, which still merge only
+  // the pinned commit.
+  expectedCommit?: string;
+}
+
+export async function approveMain(
+  ctx: PipelineContext,
+  runId: string,
+  origin: ActionOrigin,
+  options: ApproveMainOptions = {},
+): Promise<string> {
+  return withFinalMergeLock(runId, () => mergeReviewedResult(ctx, runId, origin, options));
+}
+
+async function mergeReviewedResult(ctx: PipelineContext, runId: string, origin: ActionOrigin, options: ApproveMainOptions): Promise<string> {
   const run = ctx.store.require(runId);
+  const { baseBranch, integrationBranch } = run;
   if (run.status === "completed") {
-    return `Already merged ${run.integrationBranch} into ${run.baseBranch}`;
+    return `Already merged ${integrationBranch} into ${baseBranch}`;
   }
   if (run.status !== "awaiting_user") throw new Error(`Run is '${run.status}', not awaiting approval`);
   if (!allPipelinesIntegrated(run)) throw new ToolError("Every pipeline must be integrated before final approval.");
+  let review: FinalReview | null;
+  try {
+    review = await requireCurrentFinalReview(run, options.expectedCommit);
+  } catch (staleReviewError) {
+    if (staleReviewError instanceof StaleFinalReviewError) {
+      ctx.logEvent(runId, {
+        taskId: null, ...originLogFields(origin), to: baseBranch, kind: "run.final_merge_refused",
+        summary: staleReviewError.message, outcome: "blocked",
+      });
+    }
+    throw staleReviewError;
+  }
   // Merge happens before the status change so a conflict leaves the run awaiting approval and the human can retry.
-  const mergeCommit = await mergeIntegrationIntoBase(run.repoPath, run.baseBranch, run.integrationBranch);
+  const mergeCommit = await mergeIntegrationIntoBase(run.repoPath, baseBranch, integrationBranch, review?.commit ?? null);
   ctx.store.mutate(runId, (mutableRun) => {
     // An abort may overlap git's subprocess; record the actual merge below without reopening the stopped run.
     if (mutableRun.status === "aborted") return;
@@ -328,9 +388,12 @@ export async function approveMain(ctx: PipelineContext, runId: string, origin: A
       agent.awaitingSince = null;
     }
   });
+  const reviewedSuffix = review ? ` reviewed ${review.commit}` : "";
   ctx.logEvent(runId, {
-    taskId: null, ...originLogFields(origin), to: run.baseBranch, kind: "run.merged_to_base",
-    summary: origin.kind === "engine" ? `${mergeCommit} (FULL_AUTO auto-merge after slp_present_to_manager)` : mergeCommit,
+    taskId: null, ...originLogFields(origin), to: baseBranch, kind: "run.merged_to_base",
+    summary: origin.kind === "engine"
+      ? `${mergeCommit}${reviewedSuffix} (FULL_AUTO auto-merge after slp_present_to_manager)`
+      : `${mergeCommit}${reviewedSuffix}`,
     outcome: "delivered",
   });
   await retireRunResources(ctx, runId);
@@ -340,16 +403,23 @@ export async function approveMain(ctx: PipelineContext, runId: string, origin: A
     mutableRun.devCwd = mutableRun.repoPath;
     mutableRun.devWorkspaceId = mutableRun.supervisorWorkspaceId;
   });
-  return `Merged ${run.integrationBranch} into ${run.baseBranch} (${mergeCommit.slice(0, 8)})`;
+  return review
+    ? `Merged ${integrationBranch} at ${review.commit.slice(0, 12)} into ${baseBranch} (${mergeCommit.slice(0, 8)})`
+    : `Merged ${integrationBranch} into ${baseBranch} (${mergeCommit.slice(0, 8)})`;
 }
 
-export async function approveRunGate(ctx: PipelineContext, runId: string, taskId: string | null): Promise<string> {
+export async function approveRunGate(
+  ctx: PipelineContext,
+  runId: string,
+  taskId: string | null,
+  options: ApproveMainOptions = {},
+): Promise<string> {
   const run = ctx.store.require(runId);
   // Dynamic pipeline gates have their own RPC; the run-level gate is only final approval.
   if (taskId || run.gate?.kind !== "final_approval") {
     throw new ToolError("This run uses dynamic pipeline gates; approve the pipeline gate or final run approval from its matching control.");
   }
-  return approveMain(ctx, runId, rpcOrigin(approveGateRpc.name));
+  return approveMain(ctx, runId, rpcOrigin(approveGateRpc.name), options);
 }
 
 export async function abortRun(ctx: PipelineContext, runId: string): Promise<void> {

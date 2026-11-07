@@ -78,7 +78,10 @@ try {
       if (task.gate) await callRpc("slp.gate.approve", { runId: run.id, taskId: task.id });
     }
     if (run.status === "awaiting_user") {
-      const approval = await callRpc("slp.run.approve_main", { runId: run.id });
+      const approval = await callRpc("slp.run.approve_main", {
+        runId: run.id,
+        ...(run.finalReview ? { expectedCommit: run.finalReview.commit } : {}),
+      });
       console.log(approval.message);
     }
     if (run.status === "completed") break;
