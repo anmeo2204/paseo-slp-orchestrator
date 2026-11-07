@@ -207,7 +207,7 @@ R4  P1 BLOCK grandchild   P2 BLOCK nested sandbox-exec   P3 BLOCK kill -0 daemon
 | 5 | **Cross-run interference within a listed repository.** Runs on the same repository share its worktree directory and its `slp/` branches, so an agent can write another run's worktree or move another run's `slp/` branch. *Updated:* the preflight review found the scope was wider, covering every project's worktrees. That is fixed: only the listed repositories' project directories open (X1–X3). | Medium | Per-run scoping needs the wrapper to know the run's worktree, but Paseo passes no cwd. Possible follow-up: a per-run provider, or a plugin-supplied env var. Interim: one active run per listed repository. |
 | 6 | **Bus port drift.** The plugin reuses its previous bus port unless the port is taken. If the port moves, already-running sandboxed sessions keep only the old port and lose the bus (fail closed). New sessions pick up the new port. | Low | Agents cannot squat the port because listening is denied (N13). Mitigation: avoid plugin reloads during runs. |
 | 7 | **`sandbox-exec` is deprecated** and the SBPL syntax is undocumented. Behaviour can change with macOS updates, as §5.1 and §5.2 show. | Medium | Re-run `validate-slp-sandbox.sh` after every macOS or Codex update, before any run (interim restriction I-6). |
-| 8 | **Plugin provider-ID compatibility (not implemented).** The plugin keys behaviour by provider ID, so `codex-slp` differs from `codex` in three ways: `unattendedModeForProvider("codex-slp")` returns `undefined` (verified); `inferModelProviderFamily("gpt-…")` returns `"codex"`, so peer model overrides under `codex-slp` may be rejected; and `PROVIDERS_WITHOUT_TOOL_POLICY` is ID-keyed. | Blocks deployment | §8 lists the needed change. Without it, a `codex-slp` run may fall back to an interactive permission mode and stall. |
+| 8 | **Plugin provider-ID compatibility.** `codex-slp` got no unattended mode, and short Codex peer models were rejected under it. | Fixed in code (§8); inactive until the plugin is reloaded | The mapping is an explicit declaration that the daemon entry has `extends: "codex"`. A mismatch makes Paseo reject the session. |
 | 9 | **Daemon-side Codex home mismatch.** The daemon reads Codex state (session files used for fork, rewind and timeline) from *its own* `CODEX_HOME`, while sandboxed sessions write to `~/.codex-slp`. | Medium, unverified | Session forking (used for Forked Leads) may not find the rollout. This must be checked in the first live session. If it fails, set `CODEX_HOME=~/.codex-slp` for the daemon itself, which is a global change needing approval, or keep the Manager's `~/.codex` readable for `sessions/` only. |
 | 10 | **Plugin source writes are denied only to sandboxed agents.** Any unsandboxed process (other providers, the Manager's tools) can still modify the plugin. | Low | Outside the agent threat model. |
 | 11 | **Relay.** `daemon.relay.enabled = true`. Sandboxed agents cannot reach the daemon to use it, but relay exposure of the daemon to remote clients is unchanged. | Informational | Out of scope; listed for the upstream request. |
@@ -270,23 +270,40 @@ Set a daemon password with `paseo daemon set-password`, which stores a bcrypt ha
 
 ### 7.4 Plugin-side (no global change)
 
-Run settings choose `codex-slp` as the provider for the Supervisor, Lead and Peer roles, once §8 is implemented. In SLP Orchestrator settings, set **Allowed agent providers** to `codex-slp` (§12.2). A run then refuses to start if any tier or `.slp` model resolves to another provider, and SLP never asks Paseo for one later in the run. This setting is a Paseo host setting, so changing it is a configuration change that needs the same approval as §7.1.
+Run settings choose `codex-slp` as the provider for the Supervisor, Lead and Peer roles, once the plugin is reloaded with §8. In SLP Orchestrator settings, set **Allowed agent providers** to `codex-slp` (§12.2). A run then refuses to start if any tier or `.slp` model resolves to another provider, and SLP never asks Paseo for one later in the run. This setting is a Paseo host setting, so changing it is a configuration change that needs the same approval as §7.1.
 
 ---
 
-## 8. Required plugin compatibility change before deployment (not implemented)
+## 8. Plugin provider-ID compatibility (implemented 2026-11-07, not deployed)
 
-Normalize provider IDs to their base family wherever the plugin keys behaviour by ID:
-1. `unattendedModeForProvider`: resolve `extends` (the daemon's provider snapshot exposes it) or map `codex-*` to `codex`, so `codex-slp` gets `full-access`.
-2. `isModelSupportedByBaseProvider`: compare the inferred model family with the provider's base family.
-3. `PROVIDERS_WITHOUT_TOOL_POLICY` and any other ID-keyed sets: use the base family.
+**Root cause.** The plugin keys provider behaviour by the exact provider ID, and `@getpaseo/protocol`'s manifest knows only built-in IDs. For `codex-slp`:
+1. `getUnattendedModeId("codex-slp")` is `undefined`. Every agent was therefore created without a mode, so Codex used its default `auto` mode and asked for approvals, instead of running in `full-access` like a `codex` run.
+2. Short Codex models (`gpt-…`) in `.slp/peers` were rejected under a `codex-slp` Lead, because the inferred family `codex` ≠ `codex-slp`. Peers silently fell back to the peer tier model.
+3. With `codex-slp` as the run provider, the check that refuses to carry one provider's permission mode into another family was skipped, because it needs the unattended mode. A `.slp` switch to Claude would have passed a Codex mode ID to Claude.
 
-This touches peer settings, so it falls under the AGENTS.md lockstep rule:
-- `slp-manager` skill section 3 (peer front-matter `model`), plus a test;
-- typecheck and the full suite;
-- a plugin reload.
+An earlier version of this section said the daemon's provider snapshot exposes `extends`. That is wrong: `ProviderSnapshotEntrySchema` has no `extends` field and its `modes` carry no unattended flag. Only `~/.paseo/config.json` records the inheritance, and the plugin does not read it. So the inheritance is declared explicitly in the plugin rather than discovered.
 
-Estimated scope: small, one module plus tests. It needs a separate approval because it is a mechanism change.
+**Change.** `server/project-prompts/agent-settings.ts` adds `CUSTOM_PROVIDER_BASES`, an exact-match map containing one entry, `codex-slp → codex`, and `baseProviderId()`. The base ID is used in exactly three places:
+- the unattended-mode lookup (`unattendedModeForProvider`, and through it `permissionModeFor` in the gateway);
+- the model-family check for `.slp/peers` models;
+- the "is this a different provider family" test for permission modes in `.slp` role switches. Switching between `codex` and `codex-slp` keeps a selected Codex mode, since both use the same mode IDs; any other cross-family switch is refused as before.
+
+**Deliberately unchanged:**
+- **The provider ID sent to Paseo.** It is still the exact `codex-slp/…`, so the allowlist (§12.2), the tool-policy decision and Paseo's launch path all see `codex-slp`.
+- **Explicit peer models.** A peer may name a provider only if it is the Lead's exact ID. `codex/…` under a `codex-slp` Lead is rejected and falls back to the run's peer tier, never to plain `codex`.
+- **Catalog checks.** They match by the exact provider ID.
+- **Session forking.** It matches by exact provider ID, so `codex-slp` never resumes a session from the Manager's `~/.codex` home (the Codex forker is not wired in any case).
+- **`PROVIDERS_WITHOUT_TOOL_POLICY` and the ACP auto-accept set.** `codex` is in neither, so `codex-slp` already received the same exact bus-tool pre-approval policy as `codex`. A test pins this.
+
+**Fail-closed properties:**
+- No prefix, suffix or case matching is used. `codex-slp2`, `codex-other`, `CODEX-SLP`, `constructor` and `__proto__` get no Codex mode and no Codex model family; a test covers each.
+- Unknown providers keep today's behaviour: no inherited mode is sent.
+- The map asserts that `codex-slp` extends `codex`; it cannot verify it. If the daemon's `codex-slp` entry extended any other provider, Paseo would reject the session, because `full-access` is a mode only `codex` defines among the built-ins (checked against the protocol manifest). A mis-declared entry therefore fails at creation rather than running unattended under the wrong semantics.
+- None of this shows that `codex-slp` is sandboxed (§12.2).
+
+**Tests.** `tests/custom-provider-compat.test.ts` has 24 tests; 9 of them fail against the previous code. The `slp-manager` skill (§3 `model` field and §6 item 7) now documents short Codex IDs under `codex-slp` and warns against `codex/…`, with a contract test.
+
+**Deployment** still needs a plugin reload, which is not approved.
 
 ---
 
@@ -304,11 +321,12 @@ No SLP state, run record or repository is modified by enabling or disabling the 
 
 ---
 
-## 10. Validation plan for `slp-live-repo` (after approval of §7 and §8; not executed)
+## 10. Validation plan for `slp-live-repo` (after approval of §7 and the plugin reload; not executed)
 
 Pre-conditions (revised after §12):
 - §7.1 and §7.2 are applied, with Codex credentials in the file store;
-- §8 is merged and the plugin reloaded, so the running daemon has the §12.2 guard and the provider-ID normalization;
+- the plugin is reloaded with §8 and §12.2, so the running daemon has the provider-ID mapping and the allowlist guard. Check `paseo plugin ls` against the deployed commit;
+- the `codex-slp` entry in `~/.paseo/config.json` has `"extends": "codex"` (§8 depends on it);
 - **Allowed agent providers** is set to `codex-slp` (§7.4);
 - every `model:` in `slp-live-repo/.slp` is empty or a short model ID (today they are all empty, at `681bd37`);
 - `validate-slp-sandbox.sh` exits 0 on the day (Apple Events probes may stay skipped);
@@ -410,7 +428,7 @@ Probed and found sound (no change needed):
 | Risk | Severity | Why it remains | Mitigation until fixed |
 |---|---|---|---|
 | Final merge by branch name, not by reviewed commit (residual 14) | Medium–High | Needs a plugin change to the approval flow, which was not in this approval | L8b: compare commits before approving; archive agents before final approval |
-| Plugin provider-ID compatibility, §8 (residual 8) | **Blocks the live test** | Not approved for implementation | Implement under a separate approval |
+| Plugin provider-ID compatibility, §8 (residual 8) | Fixed in code | Implemented on 2026-11-07 after approval; the plugin is not reloaded | Plugin reload (needs approval) |
 | Delayed execution of agent-written code (residual 2) | High, inherent | Out of reach of any agent-side sandbox | Interim restriction I-4 |
 | Non-Codex providers unconfined (residual 1) | High | No wrapper for them | Allowlist set to `codex-slp` (ID level) |
 | Cross-run interference in one repository (residual 5) | Medium | The wrapper does not know the run | One active run per listed repository |
@@ -431,6 +449,7 @@ Not tested:
 - `npm install` from the network into the session cache (only `npm cache verify` was run);
 - clang honouring `CLANG_MODULE_CACHE_PATH`;
 - other macOS versions;
-- residual 15 (symbolic refs).
+- residual 15 (symbolic refs);
+- whether the running daemon accepts `full-access` and short Codex models for `codex-slp` (§8). This is shown only against the protocol manifest and a fake Paseo, and needs the reload plus the config entry.
 
 The plugin has not been reloaded, so the running daemon still has the pre-guard code.

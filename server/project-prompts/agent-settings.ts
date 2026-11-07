@@ -18,10 +18,23 @@ export interface ProviderModelCatalogEntry {
   aliases?: readonly string[];
 }
 
+// Custom Paseo providers that SLP treats as their built-in base for modes and model families. Each one
+// must be configured in ~/.paseo/config.json with `extends` set to its base; Paseo's provider snapshot does
+// not expose `extends`, so this cannot be checked here. Matching is exact: no prefixes or case folding.
+const CUSTOM_PROVIDER_BASES: ReadonlyMap<string, string> = new Map([
+  // The Seatbelt-wrapped Codex provider (docs/audits/PHASE1_SEATBELT_FEASIBILITY.md §7.1).
+  ["codex-slp", "codex"],
+]);
+
+export function baseProviderId(providerId: string): string {
+  return CUSTOM_PROVIDER_BASES.get(providerId) ?? providerId;
+}
+
 // Built-in plugin providers such as Antigravity declare unattended modes in their live catalog
 // rather than @getpaseo/protocol's static manifest, so include their native full-access mode here.
 export function unattendedModeForProvider(providerId: string): string | undefined {
-  return getUnattendedModeId(providerId) ?? (providerId === "antigravity" ? "full-access" : undefined);
+  const baseId = baseProviderId(providerId);
+  return getUnattendedModeId(baseId) ?? (baseId === "antigravity" ? "full-access" : undefined);
 }
 
 // Well-known model-id prefixes identify when a short model name in .slp/peers belongs to a foreign
@@ -57,7 +70,7 @@ function isModelSupportedByBaseProvider(
     basePeerProviderId === "claude" || basePeerProviderId === "kiro" || basePeerProviderId === "kiro-cli";
   if (
     inferredProviderFamily &&
-    inferredProviderFamily !== basePeerProviderId &&
+    inferredProviderFamily !== baseProviderId(basePeerProviderId) &&
     !(inferredProviderFamily === "claude" && acceptsClaudeFamilyModels)
   ) {
     return false;
@@ -190,7 +203,8 @@ export function resolveAgentSettings(
   const selectedProviderId = provider.split("/", 1)[0];
   // Missing legacy settings mean Full Access, matching the SLP global default.
   let permissionModeId = defaultPermissionModeId;
-  if (selectedProviderId !== defaultProviderId) {
+  // A custom provider shares its base's native mode IDs, so switching between them keeps the selected mode.
+  if (baseProviderId(selectedProviderId) !== baseProviderId(defaultProviderId)) {
     const defaultUnattendedMode = unattendedModeForProvider(defaultProviderId);
     // Native permission IDs differ by provider. Preserve Full Access intent without passing another provider's ID.
     if (permissionModeId && defaultUnattendedMode && permissionModeId !== defaultUnattendedMode) {

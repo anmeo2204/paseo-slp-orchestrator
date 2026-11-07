@@ -391,6 +391,13 @@ behavioural observations:
    - Still open:
      - the final merge takes the integration branch by name, not the reviewed commit (Medium–High);
      - the plugin's provider-ID normalization (feasibility §8) blocks the live test.
+   *Update 2026-11-07 (provider compatibility):*
+   - Feasibility §8 is now implemented and tested, but not deployed. `codex-slp` is declared, by exact ID only, to inherit Codex's unattended mode (`full-access`) and Codex model family. Previously:
+     - its agents would have started in Codex's prompting `auto` mode;
+     - short `gpt-…` peer models were dropped;
+     - a Codex-only permission mode could be carried into a `.slp` switch to another provider.
+   - The provider ID sent to Paseo, the allowlist, the tool policy and session forking still use the exact ID.
+   - The change takes effect only after a plugin reload, and relies on the daemon's `codex-slp` entry using `"extends": "codex"`.
 
 ---
 
@@ -418,8 +425,8 @@ agent has invoked either; that access is a defect to fix, not a route to use.
    permission path (§4).
 
 6. *Added 2026-11-07.* Before the first live **sandboxed** run, approve separately each of the following (`PHASE1_SEATBELT_FEASIBILITY.md` §10, revised pre-conditions):
-   - the §8 provider-ID normalization;
-   - a plugin reload with the hardened commit;
+   - ~~the §8 provider-ID normalization~~ (approved and implemented 2026-11-07, not deployed);
+   - a plugin reload with the hardened commit, including §8;
    - creating `~/.codex-slp` and its login;
    - the `codex-slp` provider entry and a daemon restart;
    - setting "Allowed agent providers" to `codex-slp`;
@@ -454,6 +461,11 @@ recommendation does not change.
 test remains **NO-GO** until the §8 provider-ID change, the reload and the configuration steps in §6 item 6 are
 approved and done. After them it would be a CONDITIONAL GO, with the reviewed-commit check (feasibility L8b) as a
 manual control.
+
+*Update 2026-11-07 (provider compatibility).* The §8 change is implemented and tested, so it no longer blocks the
+live test as a code change. The test is still **NO-GO** until the plugin reload, `~/.codex-slp`, the `codex-slp`
+provider entry with a daemon restart, and the allowlist setting are approved and done. It also needs a same-day
+validator pass.
 
 Recommended disposition: keep the automated acceptance already granted, treat live acceptance as outstanding, and
 schedule the runbook with the Manager. **Phase 1 is not closed by this report.** Phase 2 has not been started.

@@ -218,6 +218,13 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).toMatch(/7\. \*\*Models and the provider allowlist:\*\*/);
   });
 
+  it("documents short Codex model IDs under codex-slp and warns against codex/ models there", () => {
+    const skillMarkdown = renderSlpManagerSkillMarkdown();
+    expect(skillMarkdown).toContain("accepts the same short Codex model IDs");
+    expect(skillMarkdown).toContain("never write `codex/…` in a repository whose runs use `codex-slp`");
+    expect(skillMarkdown).toContain("a short Codex model ID keeps the agent on `codex-slp`");
+  });
+
   it("requires a productSpec wherever the skill shows a delegation payload", () => {
     // Stale examples without productSpec make every generated Supervisor prompt fail at slp_delegate.
     const delegationLines = renderSlpManagerSkillMarkdown()

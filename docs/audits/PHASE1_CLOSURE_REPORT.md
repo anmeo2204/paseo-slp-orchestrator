@@ -199,7 +199,7 @@ Sources:
 | **Functional orchestration** | **Demonstrated live (partial)** | Run #15 on `codex`, FULL_AUTO: spec submission, approval gate, delegation, pipelines, QA and auto-merge, with tests reproduced. Scenario A is PARTIAL (escalation step not exercised); B–F not run. Automated suite: 429/429. |
 | **Approval enforcement through MCP tools** | **Enforced** | No bus tool writes an approved Spec record. Delegation is refused without a matching approval, in every mode and per feature. Live: Run #15 refused delegation before approval. Automated: F2 tests. |
 | **Approval enforcement against agent shell access** | **NOT enforced — unresolved, design-required** | The daemon admits every local client as `owner`, and plugin RPCs carry no caller identity. An agent with shell access can invoke `slp.spec.approve`, the gate approvals or `slp.run.approve_main`, or edit the run store. No in-plugin fix exists. Requires OS isolation (§7.3) and upstream caller identity (§7.6). |
-| **Provider-specific isolation readiness** | **Codex: prototype validated, not deployed. Claude / Cursor: none.** | Seatbelt enforces R1–R4 for Codex. After the 2026-11-07 hardening, 106 probes, controls and state checks match, with 2 Apple Events probes skipped (feasibility §12). Deployment needs: Manager approval of a global Paseo provider change; a plugin provider-ID compatibility change; and a live validation run. Claude (`bypassPermissions`) and Cursor (ACP) agents have no isolation path yet. |
+| **Provider-specific isolation readiness** | **Codex: prototype validated, not deployed. Claude / Cursor: none.** | Seatbelt enforces R1–R4 for Codex. After the 2026-11-07 hardening, 106 probes, controls and state checks match, with 2 Apple Events probes skipped (feasibility §12). Deployment needs: Manager approval of a global Paseo provider change; a plugin reload (the provider-ID compatibility change is implemented but not deployed); and a live validation run. Claude (`bypassPermissions`) and Cursor (ACP) agents have no isolation path yet. |
 
 The Phase 1 F2 statement must read, until the isolation in §7.3 is deployed and live-validated:
 
@@ -248,7 +248,7 @@ All probes matched on this machine. The proposed configuration change, rollback,
 
 1. **F2 host-level enforcement** (High). Deploy the Codex sandbox, which requires:
    - Manager approval of the global provider configuration (`PHASE1_SEATBELT_FEASIBILITY.md` §7);
-   - the plugin provider-ID compatibility change (§8);
+   - a plugin reload with the provider-ID compatibility change (§8, implemented 2026-11-07, not deployed);
    - a live validation run on `slp-live-repo` (§10).
 2. **Isolation for non-Codex providers**, or a decision to run Phase 1 SLP on Codex only.
 3. **Upstream caller identity.** Manager approval to publish `PASEO_UPSTREAM_PLUGIN_RPC_AUTH_ISSUE.md`; then the plugin adopts `requires: "interactive-owner"` once Paseo supports it.
