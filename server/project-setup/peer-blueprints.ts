@@ -31,7 +31,7 @@ export const DEVELOPER_EXECUTION_GUIDANCE = [
   "Run applicable fast-tier checks from TEST_POLICY; expand checks when failures or dependencies justify it, leaving heavy verification to QA.",
   "Commit in the pipeline worktree and report via slp_stage_report: changed files, commands and results, unmet criteria and hand-off items.",
   "If the brief cannot be followed, call slp_escalate rather than improvising a new approach.",
-].join("\\n");
+].join("\n");
 
 // One developer per stack. owned_paths is filled by the scaffold from the detected package paths.
 export const DEVELOPER_BLUEPRINTS: Partial<Record<DetectedStack, DeveloperBlueprint>> = {
