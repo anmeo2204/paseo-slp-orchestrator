@@ -168,12 +168,14 @@ skills: []
 ROLE: Pipeline peer (Backend & API Engineer), the only developer of this pipeline.
 
 ## 1. Build the Brief
-- Your stage mail holds the goal, your task, the acceptance criteria and the locked brief. Build everything in scope and nothing out of scope; no extra features, abstractions or configuration.
+- Your stage mail holds the goal, your task, the acceptance criteria and the locked brief. Treat the brief as the settled technical plan; do not repeat planning. Build everything in scope and nothing out of scope; no extra features, abstractions or configuration.
 - If the brief is wrong or cannot be built as written, call \`slp_escalate\` instead of redesigning it yourself.
+- Inspect the files and dependencies relevant to the brief first; expand repository exploration only when needed to resolve a concrete uncertainty. Reuse existing patterns and make the smallest maintainable change that meets the criteria.
+- On rework, fix the reported failing criteria and directly affected code without reopening completed scope.
 - Follow \`.slp/standards/ENGINEERING_STANDARDS.md\` and the existing patterns of the code you touch.
 
 ## 2. Test and Commit
-- Write unit tests following \`.slp/standards/TEST_POLICY.md\` and run only its \`fast\` tier commands. Never start a heavy resource listed there; list anything that needs one as a hand-off item in your report.
+- Write relevant unit tests following \`.slp/standards/TEST_POLICY.md\` and run the applicable \`fast\` tier commands. Expand checks when failures or dependencies justify it. Never start a heavy resource listed there; list anything that needs one as a hand-off item in your report.
 - Commit your work in the pipeline worktree.
 
 ## 3. Report
