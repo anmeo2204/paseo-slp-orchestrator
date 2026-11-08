@@ -91,6 +91,14 @@ SLP orchestrates software delivery across three tiers and four runtime roles (\`
 
 ---
 
+### Shared Project Context (Read on Demand)
+- Project Setup creates \`.slp/context/BUSINESS.md\`, \`.slp/context/ARCHITECTURE.md\` and \`.slp/standards/ENGINEERING.md\` only when absent, even with overwrite enabled. Preserve customizations and existing \`TEST_POLICY.md\` when tailoring a project.
+- Supervisor reads relevant Business sections; Lead reads Business, Architecture and Engineering before locking the brief; Developer reads applicable project rules, Architecture and Engineering; QA Lead reads Business and Test Policy. Missing context in older projects falls back to existing documentation and code conventions.
+- Keep \`ENGINEERING_STANDARDS.md\` when present and follow its applicable rules alongside \`ENGINEERING.md\`; do not rename, overwrite or duplicate legacy rules.
+- Developers discover an installed Technology Skill only when the stack/task needs it. Verify the actual \`SKILL.md\` exists and matches the package/framework before referencing or reading it: Next.js skill for Next.js; Laravel skill only with framework evidence such as \`laravel/framework\` in \`composer.json\`. Other stacks use the same evidence-based selection.
+- Read only relevant sections and references (progressive disclosure). If no matching skill is available/readable in the worktree, use project rules and existing code/dependencies. Never invent skill paths, install skills, copy skills per peer or embed whole skill bodies into system prompts or briefs. YAML \`skills\` is descriptive metadata, not an automatic loader.
+- Context and skills are not injected automatically. Worktrees see committed files; ignored/uncommitted skills may be unavailable. This setup does not synchronize skills or modify \`.worktreeinclude\` for them.
+
 ## 2. Organizing \`.slp/\` by Functional Groups & Shared Standards
 
 A brand-new repository is seeded with five flat peers: \`DEVELOPER.md\` (developer), \`QA_ENGINEER.md\` (qa), and the advisors \`ARCHITECT.md\`, \`REVIEWER.md\`, \`SECURITY_REVIEWER.md\`. When tailoring \`.slp/\` for a real project, derive the peers from the investigation and group them by discipline, with a \`.slp/standards/\` folder for shared rules.
@@ -102,8 +110,11 @@ A brand-new repository is seeded with five flat peers: \`DEVELOPER.md\` (develop
 ├── LEAD.md
 ├── QA_LEAD.md                              # QA Lead: grades the merged QA branch through QA peers
 ├── SUPERVISOR.md
+├── context/
+│   ├── BUSINESS.md
+│   └── ARCHITECTURE.md
 ├── standards/                              # Shared rules (ignored by the role parser)
-│   ├── ENGINEERING_STANDARDS.md
+│   ├── ENGINEERING.md                      # Also follow legacy ENGINEERING_STANDARDS.md if present
 │   └── TEST_POLICY.md                      # REQUIRED: test tiers, heavy resources, unit/manual conventions
 └── peers/                                  # Recursively scanned
     ├── design/
@@ -172,7 +183,8 @@ ROLE: Pipeline peer (Backend & API Engineer), the only developer of this pipelin
 - If the brief is wrong or cannot be built as written, call \`slp_escalate\` instead of redesigning it yourself.
 - Inspect the files and dependencies relevant to the brief first; expand repository exploration only when needed to resolve a concrete uncertainty. Reuse existing patterns and make the smallest maintainable change that meets the criteria.
 - On rework, fix the reported failing criteria and directly affected code without reopening completed scope.
-- Follow \`.slp/standards/ENGINEERING_STANDARDS.md\` and the existing patterns of the code you touch.
+- Read applicable project rules, \`.slp/context/ARCHITECTURE.md\` and \`.slp/standards/ENGINEERING.md\` when present, plus legacy \`.slp/standards/ENGINEERING_STANDARDS.md\`. If missing, follow existing documentation and code conventions.
+- When technology guidance is needed, discover a matching installed skill, verify its actual \`SKILL.md\` and package/framework fit, and read only relevant sections. If unavailable, use project rules and code/dependencies; never invent skill paths, install skills, copy skills per peer or paste entire skill bodies into prompts.
 
 ## 2. Test and Commit
 - Write relevant unit tests following \`.slp/standards/TEST_POLICY.md\` and run the applicable \`fast\` tier commands. Expand checks when failures or dependencies justify it. Never start a heavy resource listed there; list anything that needs one as a hand-off item in your report.
@@ -206,6 +218,8 @@ ROLE: Pipeline peer (Backend & API Engineer), the only developer of this pipelin
 Start from the seeded files (the plugin writes them into an empty \`.slp/\`) and adapt them to the project; keep every item of the matching checklist.
 
 ### Mandatory Checklist When Editing \`.slp/SUPERVISOR.md\`
+
+Read relevant Business Context when present before drafting requirements; fall back to existing product documentation.
 1. **Front matter:** \`role: supervisor\` and a non-empty \`description\`.
 2. **Read-only:** the Supervisor never edits files or commits.
 3. **Product spec in chat before delegation:** draft the minimum sufficient spec in Vietnamese — the smallest text that lets the Lead build it correctly and the QA Lead verify it, WHAT not HOW — from five information groups: Goal, Scope (only where unclear), Expected behavior, Acceptance criteria an outsider can check (Given/When/Then where it helps), and Constraints / decisions (including written assumptions). They are not mandatory headings: omit a group that adds nothing, state each requirement once, skip obvious UI states and speculative edge cases, scale detail to the feature's complexity, and ask the human only about unresolved product decisions that materially change the expected behavior. Show every draft in chat.
@@ -217,6 +231,8 @@ Start from the seeded files (the plugin writes them into an empty \`.slp/\`) and
 9. **Turn rule:** *"After \`slp_submit_spec\`, \`slp_delegate\`, \`slp_notify\`, \`slp_request_rework\`, \`slp_relay_decision\` or \`slp_present_to_manager\` succeeds, END YOUR TURN."*
 
 ### Mandatory Checklist When Editing \`.slp/LEAD.md\`
+
+Read relevant Business, Architecture and Engineering context before locking the brief; retain legacy engineering rules and reference rather than copy them.
 1. **Front matter:** \`role: master-lead\` (or \`lead\`) and a non-empty \`description\`. A \`model\` from another provider switches the Lead's provider, and with it the provider its stage peers fork from; outside the "Allowed agent providers" list the run refuses to start.
 2. **Product spec is a contract** and sibling Leads align shared contracts via \`slp_ask\`.
 3. **Pipeline shape:** \`{ pipeline: { name, description, stages: [{ name, kind?, goal, peers: [{ role, task }] }], brief? } }\` with role IDs from the catalog, no \`systemPrompt\` field, and the enforced shape \`[planning with advisors]? -> implement with one developer\`. Never recommend a review, QA or verify stage inside a feature pipeline.
@@ -229,6 +245,8 @@ Start from the seeded files (the plugin writes them into an empty \`.slp/\`) and
 10. **Turn rule:** *"After \`slp_define_pipeline\`, \`slp_approve_stage\`, \`slp_stage_rework\`, \`slp_resume_pipeline\`, \`slp_resume_peers\`, \`slp_handle_peer_shell\` or \`slp_finalize_pipeline\` succeeds, END YOUR TURN."*
 
 ### Mandatory Checklist When Editing \`.slp/QA_LEAD.md\`
+
+Read relevant Business Context and Test Policy; keep focused verification and targeted rework.
 1. **Front matter:** \`role: qa-lead\` and a non-empty \`description\`. A \`model\` here applies to the QA Lead only.
 2. **Two phases:** preparation (read \`TEST_POLICY.md\`, map every product spec scenario and every feature brief criterion to a check, ask feature Leads via \`slp_ask\`, do not define a pipeline) and post-handover (define the QA pipeline, omitting \`worktree\`).
 3. **Never edit code:** the runtime denies its writes; fixes go to the verify stage's developer.
@@ -238,6 +256,8 @@ Start from the seeded files (the plugin writes them into an empty \`.slp/\`) and
 7. **Turn rule:** *"After \`slp_define_pipeline\`, \`slp_approve_stage\`, \`slp_stage_rework\`, \`slp_resume_pipeline\`, \`slp_handle_peer_shell\`, \`slp_finalize_pipeline\` or \`slp_report\` succeeds, END YOUR TURN."*
 
 ### Mandatory Checklist When Editing Any \`.slp/peers/<group>/*.md\` File
+
+For developers, retain the project-rule and on-demand Technology Skill guidance from section 3, with verified paths and a missing-skill fallback.
 1. **Front matter:** unique, valid, non-reserved \`role\`, a clear \`description\`, an explicit \`kind\` and a \`tier\` that matches it.
 2. **Work from the stage mail:** the workflow relies on the goal, task, acceptance criteria and brief in the stage mail, never on an inherited Lead session.
 3. **Stay inside the kind:** advisors never write or propose implementing it themselves; QA graders never fix; the developer never widens the brief.
@@ -270,6 +290,8 @@ Old files still load, but their instructions contradict the engine and cause rej
 6. **Standards:** create \`.slp/standards/TEST_POLICY.md\` from the investigation if it is missing.
 7. **Final-merge commit pinning:** in \`SUPERVISOR.md\`, replace any wording that \`slp_present_to_manager\` "merges the QA branch" with: it merges the commit pinned by \`slp_report\` (\`slp_get_run\` \`finalReview\`), refuses if the QA branch moved, and a refusal is answered with \`slp_request_rework\`; tell the Supervisor to review that commit and never change the QA branch. In \`QA_LEAD.md\`, add that nothing is committed to the QA branch after \`slp_finalize_pipeline\` and that a refused \`slp_report\` needs a new QA pipeline. Old files keep working; the engine enforces the pin either way, and the refusal messages name the next step.
 8. **Models and the provider allowlist:** list every non-empty \`model\` in \`SUPERVISOR.md\`, \`LEAD.md\`, \`QA_LEAD.md\` and the peer files for the human. A full \`provider/model\` that the human has not asked for should become a short model ID or empty, because a run with "Allowed agent providers" set refuses to start on it. For runs on \`codex-slp\`, a short Codex model ID keeps the agent on \`codex-slp\`; a \`codex/…\` model would leave it.
+
+9. **Project context and skills:** create missing \`context/BUSINESS.md\`, \`context/ARCHITECTURE.md\` and \`standards/ENGINEERING.md\` under \`.slp/\` without replacing existing files. Preserve \`TEST_POLICY.md\` and \`ENGINEERING_STANDARDS.md\`. Manually add the role-specific reading guidance above to existing role workflows while retaining their customizations and current protocol/turn rules; updating defaults does not rewrite existing roles or active run snapshots. Do not assume a YAML \`skills\` entry loads anything. Keep Technology Skill discovery on demand with verified paths and a clear fallback.
 
 After the edits, run the verification procedure in section 5 and list every changed file for the human.
 `;

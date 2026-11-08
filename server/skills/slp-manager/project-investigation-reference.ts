@@ -16,6 +16,8 @@ Every project has its own stack, test conventions and manual-test practice. Peer
 
 ## Phase 1: Tech Stack and Architecture Fingerprint
 
+Read existing \`.slp/context/BUSINESS.md\`, \`.slp/context/ARCHITECTURE.md\`, \`.slp/standards/ENGINEERING.md\` and legacy \`ENGINEERING_STANDARDS.md\` only where relevant. Preserve these files and \`TEST_POLICY.md\`; create missing context without inventing business facts. For developer guidance, discover installed skills only as needed, verify their actual \`SKILL.md\` and framework fit (Composer alone does not prove Laravel), and fall back to project rules and code when unavailable. Do not copy skills per peer or embed skill bodies in workflows.
+
 1. **Detect every stack present** (monorepos usually have several; record each package/app separately):
 
    | Signal files | Stack |

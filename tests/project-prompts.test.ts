@@ -56,7 +56,7 @@ describe("project prompt initialization", () => {
     expect(await readFile(join(repoPath, ".slp/LEAD.md"), "utf8")).toBe(legacyLead);
     // The engine injects the project file verbatim, so none of the new seeded guidance leaks into an old project.
     expect(systemPromptFor("supervisor", configuration)).not.toContain("Observable behaviors");
-    expect(systemPromptFor("master_lead", configuration)).not.toContain("the data and API contracts where the change has them");
+    expect(systemPromptFor("master_lead", configuration)).not.toContain("Specify API/data shapes, migrations, failure handling or interruption behavior");
   });
 
   // Older versions left data in .slp; it must not prevent seeding user-editable configuration.
@@ -182,13 +182,13 @@ describe("project system prompt composition", () => {
     expect(defaultDeveloperPrompt).not.toContain("scorecard entry per criterion");
     expect(defaultLeadPrompt).toContain("Pipeline shape (enforced): [planning]? -> implement.");
     // The brief is the only technical contract the developer and QA see, so approach must carry the design.
-    expect(defaultLeadPrompt).toContain("the integration points with the rest of the system");
-    expect(defaultLeadPrompt).toContain("the data and API contracts where the change has them");
-    expect(defaultLeadPrompt).toContain("when a dependency fails, input is invalid or the operation is interrupted");
+    expect(defaultLeadPrompt).toContain("integration or shared-feature contracts where needed");
+    expect(defaultLeadPrompt).toContain("Specify API/data shapes, migrations, failure handling or interruption behavior");
+    expect(defaultLeadPrompt).toContain("only when they affect this change and are not already settled");
     // Traceability lets the QA Lead see which product spec scenario is not covered by any criterion yet.
-    expect(defaultLeadPrompt).toContain("Each requirement names the product spec scenario or acceptance criterion it covers");
+    expect(defaultLeadPrompt).toContain("Use its ID or a short unambiguous reference in requirement");
     // inScope is schema-required, so the workflow must name it instead of letting a Lead discover it from a rejection.
-    expect(defaultLeadPrompt).toContain("inScope: the work the developer is expected to do");
+    expect(defaultLeadPrompt).toContain("inScope: only implementation boundaries not already clear from approach and criteria");
     // The Lead's catalog shows each peer's kind because it decides which stage the peer may join.
     expect(defaultLeadPrompt).toContain("(Architect, kind: advisor)");
     for (const seededPrompt of [defaultDeveloperPrompt, defaultQaPrompt, defaultLeadPrompt]) {

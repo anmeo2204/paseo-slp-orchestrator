@@ -43,6 +43,38 @@ describe("scaffoldProjectSetup", () => {
     await expect(readFile(join(repo, "paseo.json"), "utf8")).rejects.toThrow();
   });
 
+  it("previews missing context without writing and preserves existing context even on overwrite", async () => {
+    const repo = await monorepo();
+    const contexts = [".slp/context/BUSINESS.md", ".slp/context/ARCHITECTURE.md", ".slp/standards/ENGINEERING.md"];
+    const preview = await scaffoldProjectSetup(repo, { dryRun: true, overwrite: true });
+    for (const path of contexts) {
+      expect(preview.files.find((file) => file.path === path)?.action).toBe("create");
+      await expect(readFile(join(repo, path), "utf8")).rejects.toThrow();
+    }
+    await scaffoldProjectSetup(repo, { dryRun: false, overwrite: false });
+    for (const path of contexts) expect(await readFile(join(repo, path), "utf8")).toContain("# ");
+    const custom = Object.fromEntries(contexts.map((path) => [path, `Custom rules for ${path}\n`]));
+    custom[".slp/standards/ENGINEERING_STANDARDS.md"] = "Legacy engineering rules\n";
+    await write(repo, custom);
+    const result = await scaffoldProjectSetup(repo, { dryRun: false, overwrite: true });
+    for (const path of contexts) expect(result.files.find((file) => file.path === path)?.action).toBe("skip");
+    for (const [path, content] of Object.entries(custom)) expect(await readFile(join(repo, path), "utf8")).toBe(content);
+  });
+
+  it("keeps developer context and skill discovery guidance in stack-generated workflows", async () => {
+    const repo = await monorepo();
+    await scaffoldProjectSetup(repo, { dryRun: false, overwrite: false });
+    for (const role of ["NEXTJS_DEVELOPER", "PHP_BACKEND_DEVELOPER", "GO_BACKEND_DEVELOPER"]) {
+      const workflow = await readFile(join(repo, `.slp/peers/${role}.md`), "utf8");
+      expect(workflow).toContain(".slp/standards/ENGINEERING.md");
+      expect(workflow).toContain("ENGINEERING_STANDARDS.md");
+      expect(workflow).toContain("Verify its actual SKILL.md exists");
+      expect(workflow).toContain("laravel/framework");
+      expect(workflow).toContain("If no matching skill is available or readable in this worktree");
+      expect(workflow).not.toMatch(/skills\/[^ `]+\/SKILL\.md/);
+    }
+  });
+
   it("writes developers with owned_paths and a paseo.json that installs each package", async () => {
     const repo = await monorepo();
     await scaffoldProjectSetup(repo, { dryRun: false, overwrite: false });

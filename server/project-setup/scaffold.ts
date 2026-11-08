@@ -75,6 +75,13 @@ function buildPeerFiles(detection: StackDetectionResult): Array<{ relativePath: 
   return files;
 }
 
+// Project-owned context is seeded only; even an explicit scaffold overwrite preserves it.
+const PROJECT_CONTEXT_FILES = [
+  { path: ".slp/context/BUSINESS.md", content: "# Business Context\n\nRecord confirmed goals, users, domain terminology and business constraints here.\nLink existing product documentation; leave unknowns explicit instead of inventing requirements.\n" },
+  { path: ".slp/context/ARCHITECTURE.md", content: "# Architecture Context\n\nRecord the main modules, ownership boundaries and integration contracts here.\nLink existing architecture documentation and relevant source paths.\n" },
+  { path: ".slp/standards/ENGINEERING.md", content: "# Engineering Rules\n\nFollow existing project rules and patterns in the code being changed.\nIf ENGINEERING_STANDARDS.md exists beside this file, read its applicable rules too; this file does not replace them.\nLink coding conventions and architecture boundaries here. Test commands and tiers remain in TEST_POLICY.md.\n" },
+];
+
 function buildTestPolicy(detection: StackDetectionResult): string {
   const stackList = detection.stacks.map((stack) => `- ${STACK_LABELS[stack]}`).join("\n");
   return [
@@ -173,6 +180,9 @@ export async function scaffoldProjectSetup(repoPath: string, options: { dryRun: 
   // Drop unmodified seeded peers so the generated catalog replaces them instead of duplicating roles.
   await removeUnmodifiedDefaultPeers(repoPath, options.dryRun, files);
   for (const peerFile of buildPeerFiles(detection)) await emit(repoPath, peerFile.relativePath, peerFile.content, options.dryRun, options.overwrite, files);
+  for (const contextFile of PROJECT_CONTEXT_FILES) {
+    await emit(repoPath, contextFile.path, contextFile.content, options.dryRun, false, files);
+  }
   await emit(repoPath, ".slp/standards/TEST_POLICY.md", buildTestPolicy(detection), options.dryRun, options.overwrite, files);
   await emit(repoPath, "paseo.json", buildPaseoJson(detection), options.dryRun, options.overwrite, files);
   await emit(repoPath, ".worktreeinclude", buildWorktreeInclude(), options.dryRun, options.overwrite, files);

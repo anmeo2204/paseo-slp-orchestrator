@@ -326,7 +326,7 @@ describe("slp-manager project skill provisioning", () => {
     }
     // A generated .slp must teach the traceability the QA Lead relies on to spot uncovered scenarios.
     expect(skillMarkdown).toContain("names the product spec scenario or acceptance criterion it covers");
-    expect(leadWorkflow).toContain("names the product spec scenario or acceptance criterion it covers");
+    expect(leadWorkflow).toContain("Use its ID or a short unambiguous reference in requirement");
     // Nothing may pin a section count now that the list is open-ended.
     expect(skillMarkdown).not.toMatch(/5-section|five-section/);
     // The wire contract itself is unchanged, so the exact brief shape must survive the rewording.
@@ -338,5 +338,31 @@ describe("slp-manager project skill provisioning", () => {
       .filter((seededPeer) => parseYaml(seededPeer.frontMatter).tier === "integration")
       .map((seededPeer) => seededPeer.role);
     expect(integrationPeerRoles).toEqual(["qa-engineer"]);
+  });
+});
+
+
+describe("project context and progressive skill disclosure", () => {
+  it("keeps seeded role responsibilities and skill authoring guidance aligned", () => {
+    const roles = defaultProjectPrompts();
+    const skill = renderSlpManagerSkillMarkdown();
+    for (const workflow of [roles.supervisor.workflow, roles.lead.workflow, roles.qaLead!.workflow]) {
+      expect(workflow).toContain(".slp/context/BUSINESS.md");
+    }
+    for (const workflow of [roles.lead.workflow, roles.peers.find((peer) => peer.role === "developer")!.workflow]) {
+      expect(workflow).toContain(".slp/context/ARCHITECTURE.md");
+      expect(workflow).toContain(".slp/standards/ENGINEERING.md");
+      expect(workflow).toContain("ENGINEERING_STANDARDS.md");
+    }
+    expect(roles.qaLead!.workflow).toContain(".slp/standards/TEST_POLICY.md");
+    const developer = roles.peers.find((peer) => peer.role === "developer")!.workflow;
+    expect(developer).toContain("Verify its actual SKILL.md exists");
+    expect(developer).toContain("Read only the skill sections and references needed for this task");
+    expect(developer).toContain("If no matching skill is available or readable in this worktree");
+    expect(skill).toContain("even with overwrite enabled");
+    expect(skill).toContain("YAML `skills` is descriptive metadata, not an automatic loader");
+    expect(skill).toContain("updating defaults does not rewrite existing roles or active run snapshots");
+    expect(skill).toContain("ENGINEERING_STANDARDS.md");
+    expect(skill).toContain("Never invent skill paths");
   });
 });

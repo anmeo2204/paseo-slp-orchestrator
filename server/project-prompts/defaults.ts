@@ -1,5 +1,6 @@
 // Defaults seed editable project files; keeping them in code also supports runs created before project prompts existed.
 import type { ProjectPromptConfig, ProjectRole } from "../../shared/project-prompts";
+import { DEVELOPER_PROJECT_CONTEXT_GUIDANCE } from "../project-setup/peer-blueprints";
 import { DEFAULT_WORKFLOWS } from "../prompts/default-workflows";
 import { normalizeRoleId, parseRoleMarkdown } from "./markdown";
 
@@ -39,6 +40,7 @@ const DEFAULT_ROLES = [
     tier: "feature",
     workflow: [
       "Build what the locked brief describes: everything in scope, nothing out of scope.",
+      DEVELOPER_PROJECT_CONTEXT_GUIDANCE,
       "",
       "1. Read the brief, the stage goal and the files the change touches.",
       "2. Make the smallest change that satisfies every criterion; follow the project's existing patterns and libraries.",

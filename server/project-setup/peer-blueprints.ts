@@ -21,9 +21,17 @@ export interface DeveloperBlueprint {
   guidance: string;
 }
 
+// Reused by seeded and stack-generated developers; no skill body is injected into prompts.
+export const DEVELOPER_PROJECT_CONTEXT_GUIDANCE = [
+  "Read the applicable project rules, `.slp/context/ARCHITECTURE.md` and `.slp/standards/ENGINEERING.md` when present; also follow `.slp/standards/ENGINEERING_STANDARDS.md` if it exists. Missing context in older projects is not a blocker: use existing project documentation and code conventions.",
+  "When the stack or task needs technology guidance, discover an appropriate installed skill from the provider's available skills or the project's `.agents/skills` / `.claude/skills`. Verify its actual SKILL.md exists and matches the package/framework before reading it; use a Next.js skill for Next.js, and a Laravel skill only when the package confirms Laravel (for example laravel/framework in composer.json).",
+  "Read only the skill sections and references needed for this task. If no matching skill is available or readable in this worktree, follow project rules and existing code/dependencies. Never invent a skill path, install a skill, copy skills per peer, or paste entire skill bodies into workflows or briefs.",
+].join("\n");
+
 // Shared execution discipline for every generated developer, regardless of stack.
 // Stack-specific commands and boundaries remain in each blueprint's guidance.
 export const DEVELOPER_EXECUTION_GUIDANCE = [
+  DEVELOPER_PROJECT_CONTEXT_GUIDANCE,
   "Treat the locked brief as the settled technical plan; do not repeat planning or redesign the feature.",
   "Inspect relevant files and dependencies first; expand repository exploration only for a concrete uncertainty.",
   "Reuse existing patterns and make the smallest maintainable change that meets the criteria. Avoid unrelated refactoring or extras.",
