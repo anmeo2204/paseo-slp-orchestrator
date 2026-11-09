@@ -366,3 +366,12 @@ describe("project context and progressive skill disclosure", () => {
     expect(skill).toContain("Never invent skill paths");
   });
 });
+
+
+it("keeps seeded Supervisor, briefing and generated skill aligned with Kanbanly R1", () => {
+  const workflow = defaultProjectPrompts().supervisor;
+  expect(JSON.stringify(workflow)).toContain("Todo only marks readiness");
+  expect(supervisorBriefing()).toContain("ordinary discussion does not create cards");
+  expect(supervisorBriefing()).toContain("source of truth");
+  expect(renderSlpManagerSkillMarkdown()).toContain("slp.spec.submit");
+});

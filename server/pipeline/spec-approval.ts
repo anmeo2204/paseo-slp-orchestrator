@@ -47,7 +47,7 @@ export function pendingSpecApprovals(run: Run): ProductSpecApproval[] {
 
 // The Supervisor's way to put an exact spec text on the record before asking the human to approve it in the UI.
 // Re-submitting for the same feature retires whatever came before, so an approval can never apply to older text.
-export function submitProductSpec(ctx: PipelineContext, caller: BusCaller, input: SubmitProductSpecInput): string {
+export function submitProductSpec(ctx: PipelineContext, caller: Pick<BusCaller, "runId" | "agentId">, input: SubmitProductSpecInput): string {
   const productSpec = normalizeProductSpec(input.productSpec);
   const featureName = displayFeatureName(input.featureName);
   const featureKey = normalizeFeatureName(featureName);

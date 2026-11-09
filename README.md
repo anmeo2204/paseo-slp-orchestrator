@@ -4,6 +4,12 @@
 
 Bạn chỉ trò chuyện với **Supervisor**. Supervisor viết Product Spec cùng bạn, rồi giao mỗi feature cho một **Lead** riêng chạy trong Git worktree riêng. Mỗi Lead điều phối các **Peer** theo quy trình khai báo trong `.slp/` của dự án. Mọi feature được merge vào một nhánh QA chung. **QA Lead** kiểm thử nhánh đó trước khi Supervisor nghiệm thu và merge vào nhánh gốc.
 
+### Kanbanly R1
+
+Với board Kanbanly đã link: chat thường không tạo card; chỉ khi Human yêu cầu thì Supervisor viết Spec đủ giao việc trong description của card Backlog. Todo chỉ đánh dấu sẵn sàng. Approve & Run của Kanbanly đọc card hiện tại, gọi `slp.spec.submit` rồi `slp.spec.approve`, giữ cùng feature/hash/text cho delegation. RPC submit dùng chung ledger, supersede và gate có sẵn; không tạo pipeline hay tự approve. Ledger/assignment giữ snapshot làm bằng chứng; card vẫn là nơi sửa Spec. Standalone SLP giữ workflow hiện có.
+
+Sau khi người dùng áp dụng hai bản tương thích: Resend CONTRACT cho board đã link và cập nhật hướng dẫn R1 trong `.slp/SUPERVISOR.md` của dự án cũ nếu cần; không tự ghi đè customization. Chỉ dẫn được đồng bộ trong default workflow, runtime briefing và skill slp-manager. Chưa xác minh live model/UI; không thay provider, engine hay policy wave/QA.
+
 ---
 
 ## Mục lục

@@ -1,3 +1,5 @@
+import { registerRpcHandlers } from "../server/rpc-handlers";
+import { submitProductSpecRpc } from "../shared/rpc";
 // Human approval of a Product Spec is runtime state, not a prompt instruction. These tests pin the two properties
 // the mechanism rests on: authorization can only come from the plugin RPC the UI calls, and the approval is bound
 // to one exact text, so a spec edited after approval is rejected at the delegation boundary.
@@ -467,3 +469,25 @@ describe("approval scope across features", () => {
   });
 });
 
+
+
+it("UI submission RPC shares the feature/hash ledger without approving, supersedes edited text and is idempotent", async () => {
+  const flow = await createFlow({ mode: "FULL_AUTO" });
+  const runId = await flow.startRun();
+  const handlers = new Map<string, (input: any, context: any) => any>();
+  registerRpcHandlers({ handle: (rpc: { name: string }, fn: any) => handlers.set(rpc.name, fn) } as never, flow.ctx);
+  const submit = (productSpec: string) => handlers.get(submitProductSpecRpc.name)!({ runId, featureName: "billing", productSpec }, { paseo: {} });
+  expect(submitProductSpecRpc.input.safeParse({ runId, featureName: "billing", productSpec: "short" }).success).toBe(false);
+  submit(SAMPLE_PRODUCT_SPEC);
+  submit(SAMPLE_PRODUCT_SPEC);
+  expect(flow.run(runId).specApprovals).toHaveLength(1);
+  const first = flow.run(runId).specApprovals[0];
+  expect(first.status).toBe("pending");
+  flow.approveProductSpec(runId, first.specHash, first.id);
+  submit(SAMPLE_PRODUCT_SPEC);
+  expect(flow.run(runId).specApprovals[0].status).toBe("approved");
+  submit(SAMPLE_PRODUCT_SPEC + " Revised behavior.");
+  expect(flow.run(runId).specApprovals.map(row => row.status)).toEqual(["superseded", "pending"]);
+  expect(Object.values(flow.run(runId).agents).map(agent => agent.role)).toEqual(["supervisor"]);
+  expect(Object.keys(flow.run(runId).pipelines)).toEqual([]);
+});

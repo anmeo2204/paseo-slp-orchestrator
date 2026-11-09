@@ -8,6 +8,7 @@ import {
   approvePipelineGateRpc,
   approveMainRpc,
   approveProductSpecRpc,
+  submitProductSpecRpc,
   dismissArchiveWarningRpc,
   dryRunProjectRpc,
   dryRunStatusRpc,
@@ -31,7 +32,7 @@ import { buildPeerQuestionViews, computePeerQuestionMetrics } from "./pipeline/p
 import { originLogFields, rpcOrigin } from "./pipeline/action-origin";
 import { abortRun, approveMain, approveRunGate, startRun } from "./pipeline/run-lifecycle";
 import { archiveRunSafely, dismissArchiveWarning, restoreRun } from "./pipeline/run-restore";
-import { approveProductSpec } from "./pipeline/spec-approval";
+import { approveProductSpec, submitProductSpec } from "./pipeline/spec-approval";
 import { approvePipelineGate } from "./pipeline/stage-control";
 import { assertGitRepository } from "./git/git";
 import { loadProjectPrompts } from "./project-prompts/load";
@@ -173,6 +174,11 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
   server.handle(approveGateRpc, async ({ runId, taskId, expectedCommit }, { paseo }) => {
     ctx.holder.capture(paseo);
     return { ok: true, message: await approveRunGate(ctx, runId, taskId ?? null, { expectedCommit }) };
+  });
+
+  server.handle(submitProductSpecRpc, ({ runId, featureName, productSpec }, { paseo }) => {
+    ctx.holder.capture(paseo);
+    return { ok: true, message: submitProductSpec(ctx, { runId, agentId: "manager" }, { featureName, productSpec }) };
   });
 
   // The only writer of an approved Product Spec record. The handler context carries no caller identity, so this
