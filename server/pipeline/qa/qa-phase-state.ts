@@ -15,6 +15,19 @@ export function qaPipelinesOf(run: Run): PipelineState[] {
   return Object.values(run.pipelines).filter(isQaPipeline);
 }
 
+// A QA pass verifies what merged since the previous QA pass closed, so a multi-wave run does not re-grade features
+// an earlier pass already verified. With nothing new (Supervisor rework), it covers every feature.
+export function featurePipelinesForQa(run: Run, qaPipeline?: PipelineState): PipelineState[] {
+  const definedAt = qaPipeline?.createdAt ?? "\uffff";
+  const previousQaClosedAt = qaPipelinesOf(run)
+    .filter((pipeline) => pipeline.id !== qaPipeline?.id && pipeline.status === "integrated" && (pipeline.integratedAt ?? "") <= definedAt)
+    .map((pipeline) => pipeline.integratedAt ?? "")
+    .reduce((latestTimestamp, candidateTimestamp) => (candidateTimestamp > latestTimestamp ? candidateTimestamp : latestTimestamp), "");
+  const featurePipelines = featurePipelinesOf(run);
+  const mergedSincePreviousQa = featurePipelines.filter((pipeline) => (pipeline.integratedAt ?? "") > previousQaClosedAt);
+  return mergedSincePreviousQa.length > 0 ? mergedSincePreviousQa : featurePipelines;
+}
+
 // Runs created before QA Leads existed keep the old "primary Lead reports" flow.
 export function runHasQaLead(run: Run): boolean {
   return Boolean(run.qaLeadAgentId);

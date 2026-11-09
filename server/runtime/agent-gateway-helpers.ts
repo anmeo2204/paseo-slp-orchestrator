@@ -4,7 +4,7 @@ import type { AgentRecord, Run } from "../../shared/state";
 import { isPipelineLeadRole } from "../../shared/roles";
 import { unattendedModeForProvider } from "../project-prompts/agent-settings";
 import type { RunStore } from "../store/run-store";
-import type { ActiveShellCall, AgentLiveStatus, ShellActivity } from "./agent-gateway";
+import type { ActiveShellCall, AgentLiveStatus, RecentToolCall, ShellActivity } from "./agent-gateway";
 import type { PaseoApi } from "./paseo-holder";
 
 // Only Claude, Codex and OpenCode support exact MCP tool preapproval in Paseo; plugin and ACP
@@ -226,6 +226,20 @@ async function readActiveShellCallFromTimeline(
       }
     }
     return null;
+  }
+}
+
+export async function fetchRecentToolCallsFromTimeline(paseo: PaseoApi, agentId: string): Promise<RecentToolCall[]> {
+  try {
+    const timelinePage = await paseo.agents.ref(agentId).timeline.refetch({ direction: "tail", limit: 15 });
+    return timelinePage.entries.flatMap((timelineEntry) => {
+      const timelineItem = timelineEntry?.item;
+      if (!timelineItem || timelineItem.type !== "tool_call") return [];
+      const input = timelineItem.detail.type === "unknown" ? timelineItem.detail.input : null;
+      return [{ callId: timelineItem.callId, name: timelineItem.name, status: timelineItem.status, input }];
+    });
+  } catch {
+    return [];
   }
 }
 

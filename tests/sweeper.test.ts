@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetComputerUseGuardState } from "../server/pipeline/computer-use-guard";
 import { resetPeerShellWatchdogState } from "../server/pipeline/shell-watchdog";
 import { startSweeper } from "../server/sweeper";
 import { DEFAULT_SLP_SETTINGS } from "../shared/settings";
@@ -15,6 +16,7 @@ beforeEach(() => {
   // only the interval is faked: git, fs and vi.waitFor must keep running on real timers
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   resetPeerShellWatchdogState();
+  resetComputerUseGuardState();
 });
 
 afterEach(() => {
@@ -276,6 +278,41 @@ describe("sweeper", () => {
     expect(flow.gateway.archivedAgentIds).toContain(childLeadId);
     expect(updatedRun.agents[childLeadId].archivedAt).toBeTruthy();
     expect(updatedRun.agents[supervisorId].archivedAt).toBeNull();
+  });
+
+  it("interrupts a running agent that uses computer use, once per call", async () => {
+    const { flow, runId } = await sweptRun(true);
+    const logEvent = vi.spyOn(flow.ctx, "logEvent");
+    const runningPeerId = flow.pipeline(runId)!.stages[0].peerAgentIds[0];
+    flow.gateway.setStatus(runningPeerId, "running");
+    flow.gateway.setRecentToolCalls(runningPeerId, [
+      { callId: "shell-1", name: "exec", status: "completed", input: null },
+      { callId: "cua-1", name: "cua_repl.js", status: "completed", input: { code: "await cua.createBrowserTab()" } },
+    ]);
+
+    await tick();
+    const interrupts = flow.gateway.promptsTo(runningPeerId).filter((text) => text.includes("Computer Use Blocked"));
+    expect(interrupts).toHaveLength(1);
+    expect(interrupts[0]).toContain("cua_repl.js");
+    expect(interrupts[0]).toContain("slp_stage_report");
+    expect(logEvent).toHaveBeenCalledWith(runId, expect.objectContaining({ kind: "guard.computer_use_blocked", outcome: "blocked" }));
+
+    flow.gateway.setStatus(runningPeerId, "running");
+    await tick();
+    expect(flow.gateway.promptsTo(runningPeerId).filter((text) => text.includes("Computer Use Blocked"))).toHaveLength(1);
+  });
+
+  it("leaves idle agents and ordinary tool calls alone", async () => {
+    const { flow, runId } = await sweptRun(true);
+    const [firstPeerId, secondPeerId] = flow.pipeline(runId)!.stages[0].peerAgentIds;
+    flow.gateway.setRecentToolCalls(firstPeerId, [{ callId: "cua-2", name: "cua_repl.js", status: "completed", input: null }]);
+    if (secondPeerId) {
+      flow.gateway.setStatus(secondPeerId, "running");
+      flow.gateway.setRecentToolCalls(secondPeerId, [{ callId: "pw-1", name: "exec", status: "running", input: null }]);
+    }
+
+    await tick();
+    expect(flow.gateway.prompts.filter((prompt) => prompt.text.includes("Computer Use Blocked"))).toEqual([]);
   });
 
   // Changing stdout/stderr resets the heartbeat clock; only when output stalls past idleTimeoutSeconds does the watchdog wake Forked Lead.

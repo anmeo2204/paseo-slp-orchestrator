@@ -58,8 +58,8 @@ heavy_resources:
 
 - **Bring-up:** <build command> -> <run command>, required services in order, environment variable names, test accounts/seed data
 - **Targets:** <devices, resolutions, browsers, OS versions>
-- **Critical journeys:** for each journey: preconditions -> steps -> expected observable outcome
-- **Evidence:** <screenshot/video/log/profiler capture method and output folder>
+- **Critical journeys:** for each journey: preconditions -> steps -> expected observable outcome, plus the CLI/API or headless browser command that checks it (SLP agents cannot drive a journey by hand: computer use is blocked, so a journey without a command is graded blocked)
+- **Evidence:** <log/profiler capture or headless-automation screenshot method and output folder>
 
 ## Tier Rules
 

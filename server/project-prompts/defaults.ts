@@ -63,13 +63,14 @@ const DEFAULT_ROLES = [
     // Verification of the merged QA branch happens in the QA pipeline, so this is the seeded integration-tier peer.
     tier: "integration",
     workflow: [
-      "Grade the delivered behavior against the criteria you were given. You do not fix code.",
+      "Grade the delivered behavior against the criteria your task assigns to you (all listed criteria when it names none). You do not fix code.",
       "",
-      "1. For each criterion, run its verification (automated test, command or manual step from `.slp/standards/TEST_POLICY.md`).",
-      "2. Record one scorecard entry per criterion: pass, fail or blocked, a one-line reason, and the evidence (test output, command result, screenshot path).",
+      "1. For each criterion, run its verification from `.slp/standards/TEST_POLICY.md` (automated test, command or headless browser automation). Run static and automated checks before browser automation, and run a shared command once for every criterion it covers.",
+      "2. Record one scorecard entry per graded criterion: pass, fail or blocked, a one-sentence reason, and the evidence (the command with its result, or an artifact path), not a transcript.",
       `3. ${QA_INTERACTION_POLICY}`,
       "4. Anything you notice outside the criteria goes into observations; do not grade it.",
       "5. Submit slp_stage_report with summary, scorecard and observations.",
+      "6. After a fix, re-grade only the criteria named in the re-grade request and run the fast-tier suite once; your earlier pass entries stand.",
       "Heavy resources listed in TEST_POLICY.md are allowed in the QA pipeline, one at a time, never while another peer of the same stage uses the same resource.",
       "",
       DEFAULT_WORKFLOWS.peer.trim(),

@@ -5,6 +5,7 @@ import type { AgentPermissionRequest } from "@getpaseo/protocol/agent-types";
 import type { PeerKind } from "../../shared/project-prompts";
 import { BUS_SERVER_NAME, type SlpRole } from "../../shared/roles";
 import { PROTECTED_TASK_FILES, matchesAnyScope } from "../git/scope";
+import { COMPUTER_USE_BLOCKED_MESSAGE, isComputerUseTool } from "./computer-use";
 
 export interface PermissionContext {
   role: SlpRole;
@@ -151,6 +152,7 @@ export function decidePermission(
   }
   // Plan and mode switches are harmless here because every peer already runs in the policy-controlled default mode.
   if (request.kind === "plan" || request.kind === "mode") return { behavior: "allow" };
+  if (isComputerUseTool(request.name, request.input)) return { behavior: "deny", message: COMPUTER_USE_BLOCKED_MESSAGE };
   const isFileWrite = FILE_WRITE_TOOLS.test(request.name) || request.detail?.type === "edit" || request.detail?.type === "write";
   if (isFileWrite) return decideFileWrite(request, context);
   if (SHELL_TOOLS.test(request.name) || request.detail?.type === "shell") return decideShell(request, context);

@@ -28,17 +28,36 @@ describe("slp-manager project skill provisioning", () => {
     const qaPeer = roles.peers.find((peer) => peer.kind === "qa")!;
     const skill = renderSlpManagerSkillMarkdown();
     for (const text of [roles.qaLead!.workflow, qaPeer.workflow, QA_BLUEPRINT.guidance, PEER_TEMPLATES_REFERENCE, skill]) {
-      expect(text).toContain("without explicit operator authorization for a named QA scope");
-      expect(text).toContain("A general request to test/verify is insufficient");
-      expect(text).toContain("Prefer existing CLI tests, API checks and browser DOM/locator automation");
-      expect(text).toContain("Do not install tooling or fall back to computer-use");
-      expect(text).toContain("Capture screenshots only for explicit visual acceptance criteria or diagnosis of an observed UI failure");
-      expect(text).toContain("Do not drive routine form/navigation checks through repeated screenshots");
-      expect(text).toContain("blocked with a reason; never mark unverified criteria passed");
+      expect(text).toContain("Computer use is blocked in SLP, and the runtime interrupts any agent that tries it");
+      expect(text).toContain("no operator request or role file unlocks it");
+      expect(text).toContain("headless browser automation run from the shell");
+      expect(text).toContain("Do not install tooling to work around this");
+      expect(text).toContain("never drive form or navigation checks through screenshots");
+      expect(text).toContain("blocked with the reason; never mark unverified criteria passed");
+      expect(text).not.toContain("operator authorization");
     }
     expect(roles.qaLead!.workflow).toContain("Preserve these restrictions when delegating");
+    expect(skill).toContain("guard.computer_use_blocked");
     expect(skill).toContain("every existing QA peer workflow (including manual/playtester roles)");
     expect(skill).toContain("apply role edits for future runs only");
+  });
+
+  it("documents targeted re-grades, one owner per criterion and per-pass feature scope in roles and skill", () => {
+    const roles = defaultProjectPrompts();
+    const qaPeer = roles.peers.find((peer) => peer.kind === "qa")!;
+    const skill = renderSlpManagerSkillMarkdown();
+    expect(skill).toContain("After its fix the engine re-grades only what failed");
+    expect(skill).toContain("only the feature briefs merged since the previous QA pass");
+    expect(skill).toContain("Each criterion belongs to exactly one grader");
+    expect(skill).toContain("let the engine's targeted re-grade handle fixes");
+    expect(roles.qaLead!.workflow).toContain("Assign each criterion to exactly one grader");
+    expect(roles.qaLead!.workflow).toContain("only graders with failed or blocked criteria re-grade those criteria");
+    expect(roles.qaLead!.workflow).toContain("lists only the features merged since the previous QA pass");
+    for (const text of [qaPeer.workflow, QA_BLUEPRINT.guidance, PEER_TEMPLATES_REFERENCE]) {
+      expect(text).toContain("your task assigns");
+      expect(text).toMatch(/re-grade only the criteria (named in|it names)/);
+    }
+    expect(BUS_TOOL_DEFINITIONS.slp_stage_report.description).toContain("a re-grade scorecard lists only the re-graded criteria");
   });
 
   it("lists project-scoped provider skill directories under the selected repository", () => {

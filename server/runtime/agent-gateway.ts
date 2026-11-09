@@ -6,13 +6,14 @@ import { BUS_SERVER_NAME, type SlpRole } from "../../shared/roles";
 import type { AgentRecord } from "../../shared/state";
 import { toolNamesForRole } from "../bus/tool-schemas";
 import { systemPromptFor, type StagePromptContext } from "../prompts/system-prompts";
-import { assertAgentProviderAllowed, resolveAgentSettings } from "../project-prompts/agent-settings";
+import { assertAgentProviderAllowed, baseProviderId, resolveAgentSettings } from "../project-prompts/agent-settings";
 import { runOrchestration } from "../../shared/orchestration";
 import { reopenOrRestoreWorktreeWorkspace } from "../git/worktree";
 import type { RunStore } from "../store/run-store";
 import {
   defaultFeatureValuesForProvider,
   fetchActiveShellCallFromTimeline,
+  fetchRecentToolCallsFromTimeline,
   fetchShellActivityFromTimeline,
   isActiveMasterLead,
   isActiveParentCoordinator,
@@ -27,6 +28,7 @@ import {
   statusFromSnapshot,
 } from "./agent-gateway-helpers";
 import type { PaseoHolder } from "./paseo-holder";
+import { CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS } from "../hooks/computer-use";
 
 export { isConfirmedMissingAgentError, permissionModeFor };
 
@@ -35,6 +37,13 @@ export interface AgentLiveStatus {
   status: "initializing" | "idle" | "running" | "error" | "closed";
   pendingPermissions: AgentPermissionRequest[];
   archived: boolean;
+}
+
+export interface RecentToolCall {
+  callId: string;
+  name: string;
+  status: string;
+  input: unknown;
 }
 
 export interface ActiveShellCall {
@@ -227,6 +236,10 @@ export class AgentGateway {
         );
         const selectedProviderId = activeModelSettings.provider.split("/", 1)[0];
         const providerFeatureValues = defaultFeatureValuesForProvider(activeModelSettings.provider);
+        // Codex validates provider options strictly and has no per-session tool deny list; the sweeper guard covers it.
+        const providerOptions = baseProviderId(selectedProviderId) === "claude"
+          ? { ...spec.extraOptions, disallowedTools: [...CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS] }
+          : spec.extraOptions;
         const baseSessionConfig = {
           provider: activeModelSettings.provider,
           modeId: activeModelSettings.permissionModeId ?? permissionModeFor(activeModelSettings.provider),
@@ -246,7 +259,8 @@ export class AgentGateway {
               url: `http://127.0.0.1:${busPort}/mcp/${agentRecord.token}`,
             },
           },
-          ...(spec.extraOptions ? { options: spec.extraOptions } : {}),
+          // The Paseo client forwards `options` as the provider's providerOptions.
+          ...(providerOptions ? { options: providerOptions } : {}),
         };
         if (this.providersWithoutToolPolicy.has(selectedProviderId)) {
           await createAgentInWorkspace({ ...baseAgentCreation, config: baseSessionConfig });
@@ -322,6 +336,12 @@ export class AgentGateway {
   async activeShellCall(agentId: string): Promise<ActiveShellCall | null> {
     const paseo = await this.holder.get();
     return fetchActiveShellCallFromTimeline(paseo, agentId);
+  }
+
+  // Recent tool calls from the timeline tail, for guards that inspect what an agent invoked. Best effort: a failed read is empty.
+  async recentToolCalls(agentId: string): Promise<RecentToolCall[]> {
+    const paseo = await this.holder.get();
+    return fetchRecentToolCallsFromTimeline(paseo, agentId);
   }
 
   // The same inspection, but a failed read is reported as "unknown" so a safety gate can refuse without evidence.

@@ -76,7 +76,7 @@ Read existing \`.slp/context/BUSINESS.md\`, \`.slp/context/ARCHITECTURE.md\`, \`
 |---|---|---|
 | \`fast\` | Starts no heavy resource; fits a small memory budget (about 1–2 GB) and finishes in minutes | Inside every parallel feature pipeline |
 | \`engine\` | Automated, but needs a heavy resource (engine batch mode, emulator, container stack, browser E2E) | Final QA pipeline only, one heavy resource at a time |
-| \`integration\` | Real-environment manual, exploratory, performance or E2E verification of the merged build | Final QA pipeline only, one heavy resource at a time |
+| \`integration\` | Real-environment, performance or E2E verification of the merged build, automated or headless (computer use is blocked) | Final QA pipeline only, one heavy resource at a time |
 
 Write \`.slp/standards/TEST_POLICY.md\` from \`TEST_POLICY_TEMPLATE.md\`. Every \`fast\` command must have been run in Phase 2 with its measurements. Every heavy resource must list process signatures. When a command is ambiguous, choose the more expensive tier.
 

@@ -48,7 +48,7 @@ ROLE: Planning advisor (System Architect). You do not write code.
 
 ## QA Grader Template (\`kind: qa\`, QA pipeline only)
 
-QA graders score the merged build against the locked feature briefs and the product spec scenarios. They do not fix code and do not decide; the QA Lead decides from their scorecard and sends fixes to the stage's developer.
+QA graders score the merged build against the locked feature brief criteria, each owning the criterion IDs its task names. They do not fix code and do not decide; the QA Lead decides from their scorecard and sends fixes to the stage's developer.
 
 \`\`\`markdown
 ---
@@ -66,14 +66,14 @@ tier: integration
 ROLE: QA grader (QA Automation Engineer). You do not fix code.
 
 ## 1. Grade
-- Your stage mail lists the criteria to grade (feature briefs and product spec scenarios). Grade every one of them, and nothing else.
-- For each criterion run its verification: the command, test file or manual step from \`.slp/standards/TEST_POLICY.md\`. Heavy resources are allowed here, one at a time, never while another peer of this stage uses the same resource.
+- Grade the criterion IDs your task assigns to you and nothing else (every criterion in your stage mail when the task names none); another grader owns the rest. Brief criteria already cover the product spec's acceptance criteria.
+- For each criterion run its verification: the command, test file or headless browser automation from \`.slp/standards/TEST_POLICY.md\`. Run static and automated checks before browser automation, and run a shared command once for every criterion it covers. Heavy resources are allowed here, one at a time, never while another peer of this stage uses the same resource.
 - ${QA_INTERACTION_POLICY}
 
 ## 2. Report
-- Call \`slp_stage_report\` with a one-line summary, \`scorecard\` with one entry per criterion \`{ criterionId, status: pass|fail|blocked, reason, evidence }\`, and \`observations\` for anything you noticed outside the criteria (not graded).
+- Call \`slp_stage_report\` with a one-line summary, \`scorecard\` with one entry per graded criterion \`{ criterionId, status: pass|fail|blocked, reason, evidence }\` (reason: one sentence; evidence: the command with its result, or an artifact path), and \`observations\` for anything you noticed outside the criteria (not graded).
 - \`fail\` means the criterion is not met on the current build; \`blocked\` means you could not run its verification, with the reason.
-- When the engine asks you to re-grade after a fix, grade every criterion again on the current worktree.
+- When the engine asks you to re-grade after a fix, re-grade only the criteria it names and run the fast-tier suite once; your earlier pass entries stand.
 
 ## 3. SLP Peer Protocol
 - You are read-only: file writes and mutating shell commands are denied.

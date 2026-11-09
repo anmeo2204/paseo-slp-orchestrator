@@ -1,6 +1,6 @@
 // In-memory AgentGateway. It registers AgentRecords in the store exactly like the real gateway
 // (the bus authenticates callers through them) and records every call for assertions.
-import type { ActiveShellCall, AgentLiveStatus, CreateAgentSpec, ShellActivity, TurnResult } from "../../server/runtime/agent-gateway";
+import type { ActiveShellCall, AgentLiveStatus, CreateAgentSpec, RecentToolCall, ShellActivity, TurnResult } from "../../server/runtime/agent-gateway";
 import type { RunStore } from "../../server/store/run-store";
 import type { AgentRecord } from "../../shared/state";
 import { resolveAgentSettings } from "../../server/project-prompts/agent-settings";
@@ -34,6 +34,7 @@ export class FakeAgentGateway {
   private readonly scriptedTurnReplies = new Map<string, string[]>();
   private readonly sessionIdByAgentId = new Map<string, string | null>();
   private readonly activeShellByAgentId = new Map<string, ActiveShellCall | null>();
+  private readonly recentToolCallsByAgentId = new Map<string, RecentToolCall[]>();
   // Agents that finish the turn a prompt starts, which is how a peer behaves when it obeys a Lead's interrupt.
   private readonly endsTurnOnPrompt = new Set<string>();
   private readonly shellActivityFailureByAgentId = new Map<string, { reason: string; rejects: boolean }>();
@@ -61,6 +62,10 @@ export class FakeAgentGateway {
 
   setActiveShellCall(agentId: string, shellCall: ActiveShellCall | null): void {
     this.activeShellByAgentId.set(agentId, shellCall);
+  }
+
+  setRecentToolCalls(agentId: string, toolCalls: RecentToolCall[]): void {
+    this.recentToolCallsByAgentId.set(agentId, toolCalls);
   }
 
   // A real peer that is told to stop reads the message and ends its turn, leaving the session idle. Without this
@@ -156,6 +161,10 @@ export class FakeAgentGateway {
 
   async activeShellCall(agentId: string): Promise<ActiveShellCall | null> {
     return this.activeShellByAgentId.get(agentId) ?? null;
+  }
+
+  async recentToolCalls(agentId: string): Promise<RecentToolCall[]> {
+    return this.recentToolCallsByAgentId.get(agentId) ?? [];
   }
 
   async shellActivity(agentId: string): Promise<ShellActivity> {

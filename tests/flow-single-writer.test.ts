@@ -24,8 +24,8 @@ async function defineAsLead(flow: Flow, runId: string, pipeline: Partial<Pipelin
   return flow.callAsRole(runId, "master_lead", null, "slp_define_pipeline", { pipeline: { version: "1.0", description: "Shape check", ...pipeline } });
 }
 
-// Merges one feature into the QA branch so the QA Lead can define a verify stage with a grader and a fixer.
-async function qaVerifyStage(flow: Flow) {
+// Merges one feature into the QA branch so the QA Lead can define a verify stage with graders and a fixer.
+async function qaVerifyStage(flow: Flow, graderTasks: string[] = ["Grade every criterion"]) {
   const { runId, pipelineId } = await startedRunWithPipeline(flow, SINGLE_DEVELOPER_PIPELINE);
   commitPipelineWork(flow, runId, pipelineId);
   await completePipeline(flow, runId, pipelineId);
@@ -37,7 +37,7 @@ async function qaVerifyStage(flow: Flow) {
     name: "qa-scorecard",
     description: "Grade the merged build",
     stages: [{ name: "verify", goal: "Every brief criterion passes", peers: [
-      { role: "qa-engineer", task: "Grade every criterion" },
+      ...graderTasks.map((task) => ({ role: "qa-engineer", task })),
       { role: "developer", task: "Fix what the QA Lead sends you" },
     ] }],
   } });
@@ -48,6 +48,7 @@ async function qaVerifyStage(flow: Flow) {
   return {
     runId, qaPipelineId, qaLeadId, stage,
     graderId: flow.agentId(runId, "qa-engineer", stage.id),
+    graderIds: stage.peerAgentIds.slice(0, graderTasks.length),
     fixerId: flow.agentId(runId, "developer", stage.id),
   };
 }
@@ -142,6 +143,51 @@ describe("QA scorecard loop", () => {
     const secondReview = flow.mailTo(runId, qaLeadId).filter((mail) => mail.awaitTool === "slp_approve_stage").at(-1)?.text ?? "";
     expect(secondReview).toContain("C1 passes now.");
     expect(secondReview).toContain("Rework rounds used: 1/3");
+  });
+
+  it("re-grades only the failed criteria of the graders that failed them after a fix", async () => {
+    const flow = await createFlow({ mode: "FULL_AUTO" });
+    const { runId, qaLeadId, graderIds: [failingGraderId, passingGraderId], fixerId } = await qaVerifyStage(flow, ["Grade C1 and C3", "Grade C2"]);
+    await flow.callAs(failingGraderId, "slp_stage_report", { summary: "C1 fails.", scorecard: [
+      ...failingScorecard,
+      { criterionId: "C3", status: "pass", reason: "Import accepts CSV.", evidence: "npm test: 12 passed" },
+    ] });
+    await flow.callAs(passingGraderId, "slp_stage_report", { summary: "C2 passes.", scorecard: [
+      { criterionId: "C2", status: "pass", reason: "Export matches.", evidence: "npm test: 3 passed" },
+    ] });
+    await flow.deliverMail(runId);
+    expect((await flow.callAs(qaLeadId, "slp_stage_rework", { feedback: "Round totals to two decimals." })).isError).toBe(false);
+    const passingGraderMailBefore = flow.mailTo(runId, passingGraderId).length;
+
+    await flow.callAs(fixerId, "slp_stage_report", { summary: "Totals now use toFixed(2)." });
+    const regradeRequest = flow.mailTo(runId, failingGraderId).at(-1)!;
+    expect(regradeRequest.awaitTool).toBe("slp_stage_report");
+    expect(regradeRequest.text).toContain("Re-grade only these criteria on the current worktree: C1.");
+    expect(regradeRequest.text).toContain("fast-tier");
+    expect(flow.mailTo(runId, passingGraderId)).toHaveLength(passingGraderMailBefore);
+
+    await flow.callAs(failingGraderId, "slp_stage_report", { summary: "C1 passes now.", scorecard: [
+      { criterionId: "C1", status: "pass", reason: "Totals round to two decimals.", evidence: "billing.test.ts:12" },
+    ] });
+    const review = flow.mailTo(runId, qaLeadId).filter((mail) => mail.awaitTool === "slp_approve_stage").at(-1)?.text ?? "";
+    expect(review).toContain("C1 passes now.");
+    expect(review).toContain("earlier passes stand");
+  });
+
+  it("asks every grader to re-check affected criteria when the fix addressed no failed criterion", async () => {
+    const flow = await createFlow({ mode: "FULL_AUTO" });
+    const { runId, qaLeadId, graderIds, fixerId } = await qaVerifyStage(flow, ["Grade C1", "Grade C2"]);
+    for (const [graderIndex, graderId] of graderIds.entries()) {
+      await flow.callAs(graderId, "slp_stage_report", { summary: "Passes.", scorecard: [
+        { criterionId: `C${graderIndex + 1}`, status: "pass", reason: "Met.", evidence: "npm test" },
+      ], observations: ["Tooltip missing."] });
+    }
+    await flow.deliverMail(runId);
+    await flow.callAs(qaLeadId, "slp_stage_rework", { feedback: "Add the tooltip." });
+    await flow.callAs(fixerId, "slp_stage_report", { summary: "Tooltip added." });
+    for (const graderId of graderIds) {
+      expect(flow.mailTo(runId, graderId).at(-1)?.text).toContain("Re-grade only the criteria this fix can affect");
+    }
   });
 
   it("refuses rework past the cap, routes the escalation to the human and resumes only with the relayed decision", async () => {

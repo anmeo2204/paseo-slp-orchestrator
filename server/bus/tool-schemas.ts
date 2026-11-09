@@ -80,7 +80,7 @@ export const BUS_TOOL_DEFINITIONS = {
   slp_stage_report: {
     // Stage peers submit structured findings or blockers via slp_stage_report.
     roles: ["peer"],
-    description: "Submit this peer's result or blocker for the current stage. QA peers must include scorecard: one entry per brief criterion { criterionId, status: pass|fail|blocked, reason, evidence }, plus optional observations outside the criteria.",
+    description: "Submit this peer's result or blocker for the current stage. QA peers must include scorecard: one entry per criterion they graded { criterionId, status: pass|fail|blocked, reason (one sentence), evidence (command with result, or artifact path) }, plus optional observations outside the criteria. After a fix, a re-grade scorecard lists only the re-graded criteria.",
     input: StageReportSubmissionSchema,
   },
   slp_approve_stage: {

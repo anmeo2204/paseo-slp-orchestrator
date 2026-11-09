@@ -33,7 +33,7 @@ export function qaLeadPreparationBriefing(context: QaLeadBriefingContext): strin
     [
       "### What To Do Now (Preparation Phase)",
       "1. Read `.slp/standards/TEST_POLICY.md` and study how this project tests: unit tests, automation/E2E suites, manual-test checklists and critical journeys.",
-      "2. Build the QA plan for the merged build: turn every Given/When/Then scenario of each product spec into a test case (automated where TEST_POLICY allows, manual otherwise), then add suites, evidence and the `.slp/peers` roles that will run them.",
+      "2. Build the QA plan for the merged build: each feature Lead's brief criteria already cover its product-spec acceptance criteria, so plan one automated or headless-browser check per brief criterion (one shared command may cover several), add a product-spec scenario only when no brief criterion covers it, and assign each criterion to exactly one grader. Computer use is blocked; a criterion that needs it is graded blocked.",
       "3. Ask feature Leads about risky contracts or areas when needed.",
       "4. Do NOT call slp_define_pipeline yet; it is rejected until the engine hands the merged QA branch to you. End your turn when the plan is ready.",
     ].join("\n"),
@@ -51,17 +51,18 @@ function mergedFeatureSummary(pipeline: PipelineState): string {
   ].filter(Boolean).join("\n");
 }
 
-// Sent when the last feature branch lands: the QA branch now holds the whole conflict-free result.
+// Sent when the last feature branch lands: the QA branch now holds the whole conflict-free result. The caller passes
+// only the features merged since the previous QA pass.
 export function qaHandoverBriefing(run: Run, mergedFeaturePipelines: readonly PipelineState[]): string {
   return [
     `Every feature pipeline is merged into the QA branch \`${run.integrationBranch}\` (\`${run.devCwd}\`); the feature Leads resolved all merge conflicts and have been retired.`,
-    "## Merged Feature Summaries",
+    "## Merged Feature Summaries (to verify in this QA pass)",
     mergedFeaturePipelines.map(mergedFeatureSummary).join("\n\n"),
     [
       "## Next Action for QA Lead",
       "1. Inspect the merged QA branch and the hand-off items above.",
-      "2. Call slp_define_pipeline now with your verify stage(s) (omit worktree; QA pipelines always run in the QA worktree): QA peers grade the brief criteria and product spec scenarios, plus at most one developer peer per stage who fixes when you ask.",
-      "3. Decide from the scorecards, approve the last stage, close it with slp_finalize_pipeline, then call slp_report with the final scorecard (pass/fail per criterion and scenario).",
+      "2. Call slp_define_pipeline now with your verify stage(s) (omit worktree; QA pipelines always run in the QA worktree): usually one stage with one QA grader plus at most one developer peer who fixes when you ask. Add a second grader only for a separate heavy resource, and give each grader's task the criterion IDs it owns and how to check them, without copying the brief.",
+      "3. Decide from the scorecards, approve the last stage, close it with slp_finalize_pipeline, then call slp_report with the final scorecard (pass/fail/blocked per criterion).",
     ].join("\n"),
   ].join("\n\n");
 }
@@ -71,7 +72,7 @@ export function qaReworkNotice(feedback: string, run: Run): string {
   return [
     `The Supervisor requested rework of the verified result on the QA branch \`${run.integrationBranch}\` (\`${run.devCwd}\`):`,
     feedback,
-    "Define a new QA pipeline with a new name via slp_define_pipeline: a verify stage with QA graders and one developer peer who fixes when you send slp_stage_rework. Close it with slp_finalize_pipeline, then call slp_report again.",
+    "Define a new QA pipeline with a new name via slp_define_pipeline: a verify stage with one QA grader, whose task names only the criteria this feedback concerns plus one fast-tier regression run, and one developer peer who fixes when you send slp_stage_rework. Close it with slp_finalize_pipeline, then call slp_report again.",
   ].join("\n");
 }
 

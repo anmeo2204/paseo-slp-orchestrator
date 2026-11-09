@@ -55,7 +55,7 @@ describe("product spec phase", () => {
     expect(leadBriefing).toContain("Given a valid CSV When the user clicks Import");
     const qaBriefing = flow.mailTo(runId, delegatedRun.qaLeadAgentId).at(-1)?.text ?? "";
     expect(qaBriefing).toContain("Given a valid CSV When the user clicks Import");
-    expect(qaBriefing).toContain("turn every Given/When/Then scenario");
+    expect(qaBriefing).toContain("plan one automated or headless-browser check per brief criterion");
 
     // Any agent can re-read the contract after its briefing scrolls out of context.
     const runRead = JSON.parse((await flow.callAs(delegatedRun.qaLeadAgentId, "slp_get_run", {})).text) as { productSpec: string };
@@ -157,7 +157,7 @@ describe("non-UI feature delegation", () => {
     for (const scenarioId of ["GWT-1", "GWT-2", "GWT-3", "GWT-4"]) {
       expect(qaBriefing).toContain(scenarioId);
     }
-    expect(qaBriefing).toContain("turn every Given/When/Then scenario");
+    expect(qaBriefing).toContain("plan one automated or headless-browser check per brief criterion");
 
     const workspaceResponse = await flow.callAsRole(runId, "master_lead", null, "slp_create_worktree", { name: "invoice-expiry" });
     const workspace = JSON.parse(workspaceResponse.text) as { cwd: string };

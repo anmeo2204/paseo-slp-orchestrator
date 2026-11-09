@@ -177,9 +177,9 @@ describe("project system prompt composition", () => {
     expect(defaultDeveloperPrompt).toContain("Keep it simple: build only what the acceptance criteria and the locked brief require.");
     expect(defaultDeveloperPrompt).toContain("Build what the locked brief describes");
     expect(defaultDeveloperPrompt).toContain("Talk only to your Lead");
-    expect(defaultQaPrompt).toContain("scorecard entry per criterion");
+    expect(defaultQaPrompt).toContain("scorecard entry per graded criterion");
     expect(defaultQaPrompt).not.toContain("Build what the locked brief describes");
-    expect(defaultDeveloperPrompt).not.toContain("scorecard entry per criterion");
+    expect(defaultDeveloperPrompt).not.toContain("scorecard entry per graded criterion");
     expect(defaultLeadPrompt).toContain("Pipeline shape (enforced): [planning]? -> implement.");
     // The brief is the only technical contract the developer and QA see, so approach must carry the design.
     expect(defaultLeadPrompt).toContain("integration or shared-feature contracts where needed");
@@ -211,7 +211,7 @@ describe("project system prompt composition", () => {
     expect(customLeadPrompt).toContain("CUSTOM_LEAD_WORKFLOW");
     expect(customLeadPrompt).not.toContain("PRIVATE_QA_WORKFLOW");
     expect(customQaPrompt).toContain("PRIVATE_QA_WORKFLOW");
-    expect(customQaPrompt).not.toContain("scorecard entry per criterion");
+    expect(customQaPrompt).not.toContain("scorecard entry per graded criterion");
     expect(customDeveloperPrompt).toContain("CUSTOM_DEV_WORKFLOW");
     expect(customDeveloperPrompt).not.toContain("Build what the locked brief describes");
     expect(customDeveloperPrompt).not.toContain("ROLE CONTRACT:");

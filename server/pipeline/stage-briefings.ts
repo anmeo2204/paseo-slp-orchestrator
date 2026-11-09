@@ -86,7 +86,7 @@ function coordinatorDecisionGuidance(stage: StageState): string {
     return "Discuss the approach with the advisors, choose the simplest option that meets the acceptance criteria, then call `slp_approve_stage({ summary, brief: { approach, criteria: [{ id, requirement, verification }], inScope, outOfScope } })`. The brief is locked after approval.";
   }
   if (stage.kind === "verify") {
-    return "Decide from the QA scorecards: approve with `slp_approve_stage`, or send a fix to the developer with `slp_stage_rework` (the graders re-score automatically after the fix). Observations outside the criteria are your judgement call.";
+    return "Decide from the QA scorecards: approve with `slp_approve_stage`, or send a fix to the developer with `slp_stage_rework` (after the fix, only graders with failed or blocked criteria re-grade those criteria plus one fast-tier run; a re-grade scorecard lists only those criteria and earlier passes stand). Observations outside the criteria are your judgement call.";
   }
   return "Judge the developer's report against the locked brief. Approve with `slp_approve_stage`, or request a correction with `slp_stage_rework`. Do not ask for work outside the brief.";
 }

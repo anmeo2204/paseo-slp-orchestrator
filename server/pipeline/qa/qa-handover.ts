@@ -4,7 +4,7 @@ import type { Run } from "../../../shared/state";
 import { qaHandoverBriefing } from "../../prompts/qa-messages";
 import type { PipelineContext } from "../context";
 import { stageMail } from "../stage-mail";
-import { featurePipelinesOf } from "./qa-phase-state";
+import { featurePipelinesForQa } from "./qa-phase-state";
 
 // How long the merging Lead may take to finish the turn that called slp_finalize_pipeline before it is archived anyway.
 const MERGING_LEAD_IDLE_TIMEOUT_MS = 60_000;
@@ -31,7 +31,7 @@ export function applyQaHandover(mutableRun: Run): void {
     qaLeadRecord.stageId = null;
   }
   mutableRun.mailbox.push(
-    stageMail(mutableRun.qaLeadAgentId, qaHandoverBriefing(mutableRun, featurePipelinesOf(mutableRun)), "slp_define_pipeline"),
+    stageMail(mutableRun.qaLeadAgentId, qaHandoverBriefing(mutableRun, featurePipelinesForQa(mutableRun)), "slp_define_pipeline"),
   );
 }
 

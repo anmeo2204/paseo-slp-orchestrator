@@ -4,21 +4,21 @@ export const STACK_PLAYBOOKS_REFERENCE = `# Stack Playbooks (Starting Points, No
 
 Use these only to know **what to look for** during \`PROJECT_INVESTIGATION.md\`. The project's own CI, scripts and existing tests always win over this file. Every command below must be confirmed and measured in the actual repository before it goes into \`TEST_POLICY.md\`. Map what you find to peer kinds: \`fast\` work belongs to developers, \`engine\`/\`integration\` work to QA graders.
 
-QA interaction restrictions in \`SKILL.md\` apply to all journeys below: prefer existing CLI/API and browser DOM/locator automation; manual playtest scripts do not authorize desktop control. Screenshots are only for explicit visual acceptance criteria or diagnosis of an observed UI failure.
+QA interaction restrictions in \`SKILL.md\` apply to all journeys below: computer use (desktop, mouse/keyboard or visible-browser control) is blocked and interrupted by the runtime, so every journey runs through CLI/API checks or headless browser automation from the shell; a manual playtest script is graded blocked rather than driven by hand. Screenshots come only from that headless automation, for explicit visual acceptance criteria or diagnosis of an observed UI failure.
 
 ## Game Engines
 
 ### Unity
 - **Fast:** pure C# logic in assemblies with \`"noEngineReferences": true\`, tested by a plain .NET test project (NUnit/xUnit) through \`dotnet test\` without opening the editor. If no such assemblies exist, record the gap and propose extracting game rules (combat math, inventory, economy, state machines) into them.
 - **Engine:** Unity Test Framework EditMode/PlayMode via \`-batchmode -runTests -testPlatform EditMode|PlayMode -testResults <file>\` (do not add \`-quit\` together with \`-runTests\`). Each run opens a full editor (often 3–5 GB).
-- **Integration:** a player build or Play Mode session driven by the project's automation (PlayMode tests, AltTester, GameDriver, debug/cheat menus), screenshots via \`ScreenCapture.CaptureScreenshot\` or the window, and the gameplay loops from the GDD or playtest notes.
+- **Integration:** a player build or Play Mode session driven by the project's automation (PlayMode tests, AltTester, GameDriver, debug/cheat menus), screenshots via \`ScreenCapture.CaptureScreenshot\` from that automation, and the gameplay loops from the GDD or playtest notes.
 - **Heavy signatures:** \`Unity\`, \`Unity.exe\`, \`-projectPath\`, helper processes \`UnityShaderCompiler\`, \`bee_backend\`, \`Unity.ILPP.Runner\`. One editor per project folder; every Git worktree imports its own \`Library/\`.
 - **Typical peers:** \`gameplay-engineer\` and \`ui-engineer\` (developer, feature), \`gameplay-architect\` (advisor, feature), \`unity-test-automation\` and \`playtester\` (qa, integration).
 
 ### Unreal Engine
 - **Fast:** standalone C++ modules tested with GoogleTest/Catch2 when the project has them; otherwise only static checks.
 - **Engine:** \`UnrealEditor-Cmd <Project>.uproject -ExecCmds="Automation RunTests <filter>; Quit" -unattended -nullrhi -nosplash\`.
-- **Integration:** packaged build plus Gauntlet or manual playtest scripts.
+- **Integration:** packaged build plus Gauntlet automation; criteria that only a manual playtest can check are graded blocked.
 - **Heavy signatures:** \`UnrealEditor\`, \`UnrealEditor-Cmd\`, \`ShaderCompileWorker\`, \`UnrealBuildTool\`.
 
 ### Godot
@@ -30,7 +30,7 @@ QA interaction restrictions in \`SKILL.md\` apply to all journeys below: prefer 
 ### Web Frontend (React, Vue, Svelte, Angular, Next, Vite)
 - **Fast:** Vitest/Jest with jsdom or happy-dom, Testing Library, type checking, linting.
 - **Engine:** Playwright/Cypress E2E, Storybook test runner, visual regression. Each browser worker costs hundreds of MB; cap workers in the command itself.
-- **Integration:** run the app against realistic data, check critical journeys using browser DOM/locator automation; capture target-breakpoint screenshots only for explicit visual acceptance criteria or diagnosis of an observed UI failure.
+- **Integration:** run the app against realistic data, check critical journeys using headless browser DOM/locator automation (for example Playwright) run from the shell; capture target-breakpoint screenshots only for explicit visual acceptance criteria or diagnosis of an observed UI failure.
 - **Heavy signatures:** \`chrome\`, \`chromium\`, \`headless_shell\`, \`firefox\`, \`msedge\`, \`playwright\`, \`cypress\`, plus the dev server if it spawns a full stack.
 
 ### Backend and Microservices (Node, Python, Go, JVM, .NET)

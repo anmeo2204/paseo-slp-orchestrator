@@ -8,6 +8,7 @@ import { collectDescendantAgentIds, handleAgentArchived, handleSupervisorArchive
 import { recoverMasterLead } from "./pipeline/agent-revival";
 import { sweepPeerQuestions } from "./pipeline/peer-messaging/question-sweep";
 import type { PipelineContext } from "./pipeline/context";
+import { sweepComputerUseGuard } from "./pipeline/computer-use-guard";
 import { sweepPeerShellWatchdog } from "./pipeline/shell-watchdog";
 import { recoverPipelines } from "./pipeline/stage-engine";
 
@@ -73,6 +74,7 @@ async function sweepRun(ctx: PipelineContext, run: Run): Promise<void> {
   // before nudging or handing queued prompts to a stage cohort.
   const activeRun = ctx.store.require(run.id);
   if (activeRun.engineVersion !== "dynamic-stages-v1" || ["completed", "aborted"].includes(activeRun.status)) return;
+  await sweepComputerUseGuard(ctx, activeRun, liveStatuses);
   const hasDynamicPipeline = Object.keys(activeRun.pipelines).length > 0;
   // Active stage participants, a planning/running Master Lead, and a reporting Supervisor can owe workflow tools.
   if (hasDynamicPipeline || ["planning", "running", "reporting"].includes(activeRun.status)) {
