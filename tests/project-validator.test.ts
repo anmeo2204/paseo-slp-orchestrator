@@ -113,6 +113,79 @@ describe("validateProjectConfiguration", () => {
     expect(result.issues.map((issue) => issue.code)).toContain("testpolicy.heavy_in_fast");
   });
 
+  it("ignores Composer/npm mentions in policy prose and YAML notes", async () => {
+    const repo = await createDirectory("val-policy-prose");
+    await write(repo, {
+      "composer.json": JSON.stringify({ scripts: { test: "phpunit" } }),
+      ".slp/standards/TEST_POLICY.md": [
+        "# Test Policy", "Composer dependencies are required.",
+        "Run composer missing-example or npm run missing-example only after approval.",
+        "```yaml", "notes: Composer dependencies", "fast:", "  commands:",
+        "    - id: unit", "      run: composer test", "      notes: composer missing-example",
+        "```", "",
+      ].join("\n"),
+    });
+    const result = await validateProjectConfiguration(repo);
+    expect(result.issues.filter((issue) => issue.code === "testpolicy.unknown_command")).toEqual([]);
+  });
+
+  it.each([
+    ["composer install --no-interaction", { test: "phpunit" }, null],
+    ["composer install", {}, null],
+    ["composer dump-autoload", {}, null],
+    ["composer test", { test: "phpunit" }, null],
+    ["composer run-script test", { test: "phpunit" }, null],
+    ["composer run test", { test: "phpunit" }, null],
+    ["composer missing", { test: "phpunit" }, "composer missing"],
+    ["composer missing", {}, "composer missing"],
+    ["composer run-script missing", { test: "phpunit" }, "composer missing"],
+    ["composer run missing", {}, "composer missing"],
+    ["composer run-script install", {}, "composer install"],
+    ["npm run test", { test: "vitest" }, null],
+    ["npm run missing", { test: "vitest" }, "npm run missing"],
+  ])("validates executable policy entry %s with scripts %j", async (command, scripts, missing) => {
+    const repo = await createDirectory("val-policy-command");
+    await write(repo, {
+      [command.startsWith("npm") ? "package.json" : "composer.json"]: JSON.stringify({ scripts }),
+      ".slp/standards/TEST_POLICY.md": [
+        "# Test Policy", "```yaml", "tiers:", "  fast:", "    commands:",
+        "      - id: unit", `        run: '${command}'`, "```", "",
+      ].join("\n"),
+    });
+    const result = await validateProjectConfiguration(repo);
+    const warnings = result.issues.filter((issue) => issue.code === "testpolicy.unknown_command");
+    expect(warnings).toHaveLength(missing ? 1 : 0);
+    if (missing) expect(warnings[0].message).toContain(`'${missing}'`);
+  });
+
+  it.each(["bare", "crlf-fence"])("checks missing scripts in %s YAML policies", async (format) => {
+    const repo = await createDirectory("val-policy-format");
+    const yaml = "fast:\n  commands:\n    - run: composer missing\n";
+    const policy = format === "bare" ? yaml : `# Test Policy\n\n\`\`\`yaml\n${yaml}\`\`\`\n`.replace(/\n/g, "\r\n");
+    await write(repo, {
+      "composer.json": JSON.stringify({ scripts: {} }),
+      ".slp/standards/TEST_POLICY.md": policy,
+    });
+    const result = await validateProjectConfiguration(repo);
+    expect(result.issues.filter((issue) => issue.code === "testpolicy.unknown_command")).toHaveLength(1);
+  });
+
+  it("checks multiline run entries and compound commands without scanning comments", async () => {
+    const repo = await createDirectory("val-policy-multiline");
+    await write(repo, {
+      "composer.json": JSON.stringify({ scripts: { test: "phpunit" } }),
+      ".slp/standards/TEST_POLICY.md": [
+        "# Test Policy", "```yaml", "fast:", "  commands:", "    - id: unit", "      run: |",
+        "        composer install && composer test", "        composer missing # composer comment",
+        "```", "",
+      ].join("\n"),
+    });
+    const result = await validateProjectConfiguration(repo);
+    const warnings = result.issues.filter((issue) => issue.code === "testpolicy.unknown_command");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain("'composer missing'");
+  });
+
   it("flags uncommitted .slp on a git repo", async () => {
     const repo = await createDirectory("val-uncommitted");
     await write(repo, {

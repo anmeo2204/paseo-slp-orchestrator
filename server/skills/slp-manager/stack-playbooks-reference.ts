@@ -4,6 +4,8 @@ export const STACK_PLAYBOOKS_REFERENCE = `# Stack Playbooks (Starting Points, No
 
 Use these only to know **what to look for** during \`PROJECT_INVESTIGATION.md\`. The project's own CI, scripts and existing tests always win over this file. Every command below must be confirmed and measured in the actual repository before it goes into \`TEST_POLICY.md\`. Map what you find to peer kinds: \`fast\` work belongs to developers, \`engine\`/\`integration\` work to QA graders.
 
+QA interaction restrictions in \`SKILL.md\` apply to all journeys below: prefer existing CLI/API and browser DOM/locator automation; manual playtest scripts do not authorize desktop control. Screenshots are only for explicit visual acceptance criteria or diagnosis of an observed UI failure.
+
 ## Game Engines
 
 ### Unity
@@ -28,7 +30,7 @@ Use these only to know **what to look for** during \`PROJECT_INVESTIGATION.md\`.
 ### Web Frontend (React, Vue, Svelte, Angular, Next, Vite)
 - **Fast:** Vitest/Jest with jsdom or happy-dom, Testing Library, type checking, linting.
 - **Engine:** Playwright/Cypress E2E, Storybook test runner, visual regression. Each browser worker costs hundreds of MB; cap workers in the command itself.
-- **Integration:** run the app against realistic data, walk critical journeys in a real browser, capture screenshots at the target breakpoints.
+- **Integration:** run the app against realistic data, check critical journeys using browser DOM/locator automation; capture target-breakpoint screenshots only for explicit visual acceptance criteria or diagnosis of an observed UI failure.
 - **Heavy signatures:** \`chrome\`, \`chromium\`, \`headless_shell\`, \`firefox\`, \`msedge\`, \`playwright\`, \`cypress\`, plus the dev server if it spawns a full stack.
 
 ### Backend and Microservices (Node, Python, Go, JVM, .NET)

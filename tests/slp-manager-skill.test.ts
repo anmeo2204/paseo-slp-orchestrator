@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { BUS_TOOL_DEFINITIONS } from "../server/bus/tool-schemas";
+import { QA_BLUEPRINT } from "../server/project-setup/peer-blueprints";
+import { PEER_TEMPLATES_REFERENCE } from "../server/skills/slp-manager/peer-templates-reference";
 import { defaultProjectPrompts } from "../server/project-prompts/defaults";
 import { supervisorBriefing } from "../server/prompts/messages";
 import { parseRoleMarkdown } from "../server/project-prompts/markdown";
@@ -21,6 +23,24 @@ import { useTemporaryDirectories } from "./helpers/temp-directory";
 const createDirectory = useTemporaryDirectories();
 
 describe("slp-manager project skill provisioning", () => {
+  it("keeps QA interaction restrictions in seeded roles, generated peers and skill guidance", () => {
+    const roles = defaultProjectPrompts();
+    const qaPeer = roles.peers.find((peer) => peer.kind === "qa")!;
+    const skill = renderSlpManagerSkillMarkdown();
+    for (const text of [roles.qaLead!.workflow, qaPeer.workflow, QA_BLUEPRINT.guidance, PEER_TEMPLATES_REFERENCE, skill]) {
+      expect(text).toContain("without explicit operator authorization for a named QA scope");
+      expect(text).toContain("A general request to test/verify is insufficient");
+      expect(text).toContain("Prefer existing CLI tests, API checks and browser DOM/locator automation");
+      expect(text).toContain("Do not install tooling or fall back to computer-use");
+      expect(text).toContain("Capture screenshots only for explicit visual acceptance criteria or diagnosis of an observed UI failure");
+      expect(text).toContain("Do not drive routine form/navigation checks through repeated screenshots");
+      expect(text).toContain("blocked with a reason; never mark unverified criteria passed");
+    }
+    expect(roles.qaLead!.workflow).toContain("Preserve these restrictions when delegating");
+    expect(skill).toContain("every existing QA peer workflow (including manual/playtester roles)");
+    expect(skill).toContain("apply role edits for future runs only");
+  });
+
   it("lists project-scoped provider skill directories under the selected repository", () => {
     const projectSkillRoots = defaultProjectSkillRoots("/tmp/fake-project");
     // Paseo providers scan .agents/skills (Antigravity, Codex, OMP) and .claude/skills (Claude Code) inside the repo root.

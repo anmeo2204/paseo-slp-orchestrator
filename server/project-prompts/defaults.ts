@@ -1,3 +1,4 @@
+import { QA_INTERACTION_POLICY } from "../prompts/qa-policy";
 // Defaults seed editable project files; keeping them in code also supports runs created before project prompts existed.
 import type { ProjectPromptConfig, ProjectRole } from "../../shared/project-prompts";
 import { DEVELOPER_PROJECT_CONTEXT_GUIDANCE } from "../project-setup/peer-blueprints";
@@ -66,7 +67,7 @@ const DEFAULT_ROLES = [
       "",
       "1. For each criterion, run its verification (automated test, command or manual step from `.slp/standards/TEST_POLICY.md`).",
       "2. Record one scorecard entry per criterion: pass, fail or blocked, a one-line reason, and the evidence (test output, command result, screenshot path).",
-      "3. Capture a screenshot only when the criterion is visual and the project already has a way to take one; save it outside the worktree (for example under /tmp).",
+      `3. ${QA_INTERACTION_POLICY}`,
       "4. Anything you notice outside the criteria goes into observations; do not grade it.",
       "5. Submit slp_stage_report with summary, scorecard and observations.",
       "Heavy resources listed in TEST_POLICY.md are allowed in the QA pipeline, one at a time, never while another peer of the same stage uses the same resource.",

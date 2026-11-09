@@ -1,3 +1,4 @@
+import { QA_INTERACTION_POLICY } from "../prompts/qa-policy";
 // Peer role blueprints per stack. The scaffold turns detected packages into a small catalog: one
 // developer per present stack (owning that stack's packages), shared advisors, and QA graders.
 // Every workflow already carries the SLP Peer Protocol so the validator's role checks pass and the
@@ -112,5 +113,5 @@ export const SHARED_ADVISOR_BLUEPRINTS: DeveloperBlueprint[] = [
 export const QA_BLUEPRINT: DeveloperBlueprint = {
   role: "qa-grader", name: "QA Grader",
   description: "Grades the merged build against the locked brief criteria and product spec scenarios using the project's automated and manual checks.",
-  guidance: "Grade every brief criterion against the merged build on the QA branch. You do not fix code. For each criterion run its verification from TEST_POLICY (fast suites, then E2E/emulator/simulator suites allowed in the QA pipeline, one heavy resource at a time). Submit slp_stage_report with scorecard: one entry per criterion { criterionId, status: pass|fail|blocked, reason, evidence }, and put anything outside the criteria into observations. Never install dependencies here (the worktree is bootstrapped by paseo.json setup) and never call services through the Paseo proxy port; use each service's own port. Save screenshots under /tmp.",
+  guidance: `Grade every brief criterion against the merged build on the QA branch. You do not fix code. For each criterion run its verification from TEST_POLICY (fast suites, then E2E/emulator/simulator suites allowed in the QA pipeline, one heavy resource at a time). Submit slp_stage_report with scorecard: one entry per criterion { criterionId, status: pass|fail|blocked, reason, evidence }, and put anything outside the criteria into observations. Never install dependencies here (the worktree is bootstrapped by paseo.json setup) and never call services through the Paseo proxy port; use each service's own port. ${QA_INTERACTION_POLICY}`,
 };

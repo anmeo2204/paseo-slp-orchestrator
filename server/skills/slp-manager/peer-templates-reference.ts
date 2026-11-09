@@ -1,3 +1,4 @@
+import { QA_INTERACTION_POLICY } from "../../prompts/qa-policy";
 // references/PEER_TEMPLATES.md: advisor and QA grader templates matching the engine's peer kinds.
 // Each template ends with the protocol section the runtime depends on (Lead-only messaging, report tool, turn rule).
 import { BUS_SERVER_NAME } from "../../../shared/roles";
@@ -67,7 +68,7 @@ ROLE: QA grader (QA Automation Engineer). You do not fix code.
 ## 1. Grade
 - Your stage mail lists the criteria to grade (feature briefs and product spec scenarios). Grade every one of them, and nothing else.
 - For each criterion run its verification: the command, test file or manual step from \`.slp/standards/TEST_POLICY.md\`. Heavy resources are allowed here, one at a time, never while another peer of this stage uses the same resource.
-- Capture a screenshot only for visual criteria and only with the project's existing mechanism; save it outside the worktree (for example under /tmp).
+- ${QA_INTERACTION_POLICY}
 
 ## 2. Report
 - Call \`slp_stage_report\` with a one-line summary, \`scorecard\` with one entry per criterion \`{ criterionId, status: pass|fail|blocked, reason, evidence }\`, and \`observations\` for anything you noticed outside the criteria (not graded).

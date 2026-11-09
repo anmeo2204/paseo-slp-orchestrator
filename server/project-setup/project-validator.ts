@@ -92,16 +92,54 @@ function checkRoles(config: ProjectPromptConfig, issues: ValidationIssue[]): voi
   }
 }
 
+// Composer CLI commands are not entries in composer.json scripts.
+// https://getcomposer.org/doc/03-cli.md (including documented aliases).
+const COMPOSER_BUILT_INS = new Set([
+  "init", "install", "i", "update", "u", "upgrade", "require", "r", "remove", "rm", "uninstall",
+  "bump", "reinstall", "check-platform-reqs", "global", "search", "show", "info", "outdated",
+  "browse", "home", "suggests", "fund", "depends", "why", "prohibits", "why-not", "validate",
+  "status", "self-update", "selfupdate", "config", "repository", "repo", "policy", "create-project",
+  "dump-autoload", "dumpautoload", "clear-cache", "clearcache", "cc", "licenses", "exec",
+  "diagnose", "archive", "audit", "help", "list", "completion",
+]);
+
+// Read YAML command entries, including quoted and multiline run values, never Markdown prose.
+function testPolicyCommands(policy: string): string[] {
+  policy = policy.replace(/\r\n/g, "\n");
+  const blocks = [...policy.matchAll(/^```(?:yaml|yml)?[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm)].map((match) => match[1]);
+  const commands: string[] = [];
+  function collect(value: unknown): void {
+    if (Array.isArray(value)) { value.forEach(collect); return; }
+    if (!value || typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.commands)) {
+      for (const entry of record.commands) {
+        if (entry && typeof entry === "object" && typeof entry.run === "string") commands.push(entry.run);
+      }
+    }
+    Object.values(record).forEach(collect);
+  }
+  for (const block of blocks.length > 0 ? blocks : [policy]) {
+    try { collect(parseYaml(block)); } catch { /* Unparseable policy content is left to Dry Run. */ }
+  }
+  return commands;
+}
+
 async function checkTestPolicy(repoPath: string, detection: StackDetectionResult, issues: ValidationIssue[]): Promise<void> {
   const policyPath = ".slp/standards/TEST_POLICY.md";
   const policy = await readFileSafe(join(repoPath, policyPath));
   if (policy === null) { issues.push({ severity: "warning", code: "testpolicy.missing", message: "No .slp/standards/TEST_POLICY.md; Leads and peers rely on it to pick test commands.", path: policyPath }); return; }
   const knownCommands = await knownCommandsForRepo(repoPath, detection);
-  // Only check npm/composer script references, which we can resolve; other commands are left to Dry Run.
-  for (const match of policy.matchAll(/\b(npm run [a-z0-9:_-]+|composer [a-z0-9:_-]+)\b/gi)) {
-    const command = match[1].trim();
-    if (knownCommands.size > 0 && !knownCommands.has(command)) {
-      issues.push({ severity: "warning", code: "testpolicy.unknown_command", message: `TEST_POLICY references '${command}', not found in the project's package scripts.`, path: policyPath });
+  // Only inspect executable entries. Composer run/run-script explicitly names a custom script;
+  // direct Composer invocations may instead name built-ins that need no project script.
+  for (const run of testPolicyCommands(policy)) {
+    for (const match of run.matchAll(/(?:^|&&|\|\||[;|\n])[ \t]*(npm[ \t]+run[ \t]+([a-zA-Z0-9:_-]+)|composer[ \t]+(?:(run-script|run)[ \t]+)?([a-zA-Z0-9:_-]+))/g)) {
+      const [, , npmScript, explicitScript, composerName] = match;
+      if (composerName && !explicitScript && COMPOSER_BUILT_INS.has(composerName)) continue;
+      const command = npmScript ? `npm run ${npmScript}` : `composer ${composerName}`;
+      if (!knownCommands.has(command)) {
+        issues.push({ severity: "warning", code: "testpolicy.unknown_command", message: `TEST_POLICY references '${command}', not found in the project's package scripts.`, path: policyPath });
+      }
     }
   }
   // Heavy runners in the fast tier exhaust host RAM when many feature pipelines run in parallel. Check

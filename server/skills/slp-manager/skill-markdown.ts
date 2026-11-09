@@ -1,3 +1,4 @@
+import { QA_INTERACTION_POLICY } from "../../prompts/qa-policy";
 // SKILL.md body of the `slp-manager` skill: the SLP architecture, .slp role authoring rules and invariants.
 // Long project-specific procedures and the advisor/QA templates live in sibling reference modules so the
 // always-loaded SKILL.md stays short; the developer template stays here because it is the canonical example.
@@ -249,6 +250,8 @@ Read relevant Business, Architecture and Engineering context before locking the 
 ### Mandatory Checklist When Editing \`.slp/QA_LEAD.md\`
 
 Read relevant Business Context and Test Policy; keep focused verification and targeted rework.
+
+**QA interaction restrictions (copy into the QA Lead and every QA peer workflow):** ${QA_INTERACTION_POLICY} The QA Lead must preserve these restrictions when delegating, passing any explicit operator authorization and its named QA scope to peers.
 1. **Front matter:** \`role: qa-lead\` and a non-empty \`description\`. A \`model\` here applies to the QA Lead only.
 2. **Two phases:** preparation (read \`TEST_POLICY.md\`, map every product spec scenario and every feature brief criterion to a check, ask feature Leads via \`slp_ask\`, do not define a pipeline) and post-handover (define the QA pipeline, omitting \`worktree\`).
 3. **Never edit code:** the runtime denies its writes; fixes go to the verify stage's developer.
@@ -264,7 +267,7 @@ For developers, retain the project-rule and on-demand Technology Skill guidance 
 2. **Work from the stage mail:** the workflow relies on the goal, task, acceptance criteria and brief in the stage mail, never on an inherited Lead session.
 3. **Stay inside the kind:** advisors never write or propose implementing it themselves; QA graders never fix; the developer never widens the brief.
 4. **Tool obligations:** \`slp_stage_report\` (graders with \`scorecard\` and \`observations\`), \`slp_escalate\` when blocked, \`slp_ask\` / \`slp_notify\` with the Lead only, \`slp_answer\` for the Lead's questions, never approve the stage.
-5. **Proportionate evidence:** facts (files, commands, results, screenshot paths for visual criteria only), no essays, no peer-to-peer coordination.
+5. **Proportionate evidence:** facts (files, commands, results, screenshot paths only for explicit visual acceptance criteria or diagnosis of an observed UI failure), no essays, no peer-to-peer coordination.
 6. **Test commands** from \`TEST_POLICY.md\` allowed for its tier.
 7. **Turn rule:** *"After \`slp_stage_report\` or \`slp_escalate\` succeeds, END YOUR TURN."*
 
@@ -286,7 +289,7 @@ Old files still load, but their instructions contradict the engine and cause rej
 
 1. **Supervisor:** present drafted Product Specs in chat, then **add the approval step the engine now enforces in every run mode**: \`slp_submit_spec({ productSpec, featureName? })\` with the exact final text, a request that the human press Approve in the SLP Orchestrator panel, an end of turn, and only then \`slp_delegate\` with that text unchanged. An old \`.slp/SUPERVISOR.md\` that goes straight to \`slp_delegate\` is not silently broken — the refusal names \`slp_submit_spec\` — but the Supervisor wastes a turn discovering it, so update the file. Add \`slp_submit_spec\` to the turn rule. After delegation, spec changes go to the Lead with \`slp_notify\`. Add \`slp_notify\` to the turn rule. Remove any instruction to save specs on an in-plugin board, and any instruction to wait for a feature Lead's report. Replace a fixed multi-section spec template (for example scope, observable behaviors, surfaces and states, business rules, Given/When/Then scenarios, unknowns and assumptions) with the minimum sufficient spec groups — Goal, Scope, Expected behavior, Acceptance criteria, Constraints / decisions — used only where they add information; keep acceptance criteria an outsider can check, because they are what QA grades.
 2. **Lead:** replace recommended stage shapes such as \`design -> implement -> verify-and-review\` or multi-developer stages with \`[planning with advisors]? -> implement with one developer\`; extend the brief guidance so \`approach\` carries the architecture, integration points, data/API contracts and failure behavior and every criterion traces to a product spec scenario, and add the peer-pause / brief-revision workflow (\`slp_pause_peers\` -> confirm every peer stopped -> \`slp_revise_brief\` -> \`slp_resume_peers\`, checklist item 5); remove \`slp_report\`, End-User UAT pipelines, merges into the base branch, "Prior Stage Peers" consultation, and any instruction to write the brief onto an in-plugin board.
-3. **QA Lead:** the plugin re-seeds \`.slp/QA_LEAD.md\` when missing. Rewrite its stages as verify stages with graders and one fixer, and add the scorecard loop.
+3. **QA Lead:** when updating existing project roles, copy the QA interaction restrictions from section 4 into both \`.slp/QA_LEAD.md\` and every existing QA peer workflow (including manual/playtester roles); retain project-specific acceptance coverage and protocol, replace conflicting computer-use or routine screenshot instructions, and preserve the restrictions in delegated tasks. Updating the bundled skill alone does not rewrite existing role files or active run snapshots; apply role edits for future runs only. The plugin re-seeds \`.slp/QA_LEAD.md\` when missing. Rewrite its stages as verify stages with graders and one fixer, and add the scorecard loop.
 4. **Peers:** add \`kind\` and a matching \`tier\` to every peer; turn code-reviewer style peers into planning advisors; give QA peers the scorecard report from \`references/PEER_TEMPLATES.md\`; delete "Method Contract", "Rejected Alternatives", "enumerate all edge cases", "STRICT TECHNICAL METRICS" and peer-to-peer coordination sections.
 5. **Legacy \`.slp/peers/END_USER_UAT.md\`:** read it first and move project-specific journeys into the QA Lead's plan or into a \`kind: qa\` integration grader. Delete the file only after the human confirms, and remove every reference to the \`end-user\` role with it.
 6. **Standards:** create \`.slp/standards/TEST_POLICY.md\` from the investigation if it is missing.
