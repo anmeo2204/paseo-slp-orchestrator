@@ -38,10 +38,10 @@ function stageContextSection(pipeline: PipelineState, stage: StageState): string
 }
 
 // Shared tail of every stage briefing: acceptance criteria, the locked brief and what earlier stages concluded.
-function stageBackgroundSections(run: Run, pipeline: PipelineState): string[] {
+function stageBackgroundSections(run: Run, pipeline: PipelineState, options: { criteriaOnly?: boolean } = {}): string[] {
   const sections: string[] = [];
-  if (run.criteria) sections.push(`### Overall Acceptance Criteria\n${run.criteria}`);
-  const lockedBrief = briefSection(run, pipeline);
+  if (run.criteria && !options.criteriaOnly) sections.push(`### Overall Acceptance Criteria\n${run.criteria}`);
+  const lockedBrief = briefSection(run, pipeline, options);
   if (lockedBrief) sections.push(lockedBrief);
   const previousStageLines = pipeline.stages.slice(0, pipeline.currentStageIndex).map((previousStage) =>
     `- **${previousStage.name}** (${previousStage.goal}): ${previousStage.result?.summary ?? "Approved"}`,
@@ -71,7 +71,7 @@ export function peerStageBriefing(run: Run, pipeline: PipelineState, stage: Stag
     `### Your Task\n${assignment.task}`,
     peerKindGuidance(peerKind, stage),
     stageContextSection(pipeline, stage),
-    ...stageBackgroundSections(run, pipeline),
+    ...stageBackgroundSections(run, pipeline, { criteriaOnly: peerKind === "qa" }),
   ].join("\n\n");
 }
 
@@ -116,6 +116,19 @@ export function coordinatorReportUpdateBriefing(run: Run, stage: StageState, fir
     formatStageReports(newReports),
     reworkBudgetLine(run, stage),
     `You already hold this stage's goal ('${stage.goal}'), brief and the earlier reports. ${coordinatorDecisionGuidance(stage)} Call \`slp_get_pipeline\` if you need the full history.`,
+  ].join("\n\n");
+}
+
+// The Lead session that defined the pipeline wrote or received its brief and chose the roster, so its first
+// review needs only the reports and the peer IDs that rework and questions address.
+export function coordinatorFirstReviewBriefing(run: Run, stage: StageState): string {
+  const rosterLines = stage.peerAgentIds.map((agentId, peerIndex) => `- **${stage.peers[peerIndex].role}** (\`${agentId}\`)`);
+  return [
+    `### Peer Report(s) For Stage '${stage.name}' (${stage.reports.length})`,
+    formatStageReports(stage.reports),
+    `### Stage Peer Roster\n${rosterLines.join("\n")}`,
+    reworkBudgetLine(run, stage),
+    `You defined this stage and hold its goal ('${stage.goal}') and brief. ${coordinatorDecisionGuidance(stage)} Call \`slp_get_pipeline\` if you need the brief again.`,
   ].join("\n\n");
 }
 

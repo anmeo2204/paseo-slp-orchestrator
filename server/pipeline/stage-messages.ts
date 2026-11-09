@@ -4,8 +4,8 @@ import type { BusCaller } from "../bus/http-mcp";
 import type { StageReportSubmission } from "../../shared/pipeline";
 import { runOrchestration } from "../../shared/orchestration";
 import type { PipelineContext } from "./context";
-import { humanDecisionRequest } from "./stage-briefing-sections";
-import { coordinatorReportUpdateBriefing, coordinatorRevivalBriefing } from "./stage-briefings";
+import { VERIFY_FIX_TEST_SCOPE, humanDecisionRequest } from "./stage-briefing-sections";
+import { coordinatorFirstReviewBriefing, coordinatorReportUpdateBriefing, coordinatorRevivalBriefing } from "./stage-briefings";
 import { pausePipeline, requireStageLead, stageForCaller } from "./stage-context";
 import { agentPeerKind } from "./stage-shape";
 import { ToolError } from "./tool-error";
@@ -68,9 +68,13 @@ export function submitStageReport(ctx: PipelineContext, caller: BusCaller, submi
             && queuedMessage.awaitTool === "slp_approve_stage"
           ),
       );
+      const coordinatorCreatedAt = mutableRun.agents[coordinatorId]?.createdAt;
+      const coordinatorDefinedPipeline = Boolean(coordinatorCreatedAt && coordinatorCreatedAt <= pipeline.createdAt);
       const reviewBriefing = reportsAlreadyBriefed > 0
         ? coordinatorReportUpdateBriefing(mutableRun, stage, reportsAlreadyBriefed)
-        : coordinatorRevivalBriefing(mutableRun, pipeline, stage);
+        : coordinatorDefinedPipeline
+          ? coordinatorFirstReviewBriefing(mutableRun, stage)
+          : coordinatorRevivalBriefing(mutableRun, pipeline, stage);
       mutableRun.mailbox.push(stageMail(coordinatorId, reviewBriefing, "slp_approve_stage"));
       // Recorded at queue time: a later report either replaces this mail (then briefs from zero) or follows its delivery.
       stage.coordinatorSeenReports = stage.reports.length;
@@ -106,7 +110,7 @@ export function requestStageRework(ctx: PipelineContext, caller: BusCaller, inpu
       stage.messages.push({ id: randomUUID(), fromAgentId: caller.agentId, toAgentId: recipientId,
         message: input.feedback, createdAt: new Date().toISOString() });
       run.mailbox.push(stageMail(recipientId,
-        `Lead requests rework ${reworkRound}/${maxReworkRounds} for stage '${stage.name}'.\nGoal: ${stage.goal}\n${input.feedback}\nStay within the locked brief, ask only the Lead if something is unclear, and submit new evidence using slp_stage_report.`, "slp_stage_report"));
+        `Lead requests rework ${reworkRound}/${maxReworkRounds} for stage '${stage.name}'.\nGoal: ${stage.goal}\n${input.feedback}\nStay within the locked brief, ask only the Lead if something is unclear, and submit new evidence using slp_stage_report.${recipientId === verifyDeveloperId ? ` ${VERIFY_FIX_TEST_SCOPE}` : ""}`, "slp_stage_report"));
     }
     // The coordinator has delegated a further pass and should be woken by results rather than approval reminders.
     agent.awaitingTool = null;

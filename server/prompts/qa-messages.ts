@@ -32,10 +32,10 @@ export function qaLeadPreparationBriefing(context: QaLeadBriefingContext): strin
     `### Feature Leads Building in Parallel (reachable via slp_ask / slp_notify)\n${featureLeadRoster(context.featureLeads)}`,
     [
       "### What To Do Now (Preparation Phase)",
-      "1. Read `.slp/standards/TEST_POLICY.md` and study how this project tests: unit tests, automation/E2E suites, manual-test checklists and critical journeys.",
-      "2. Build the QA plan for the merged build: each feature Lead's brief criteria already cover its product-spec acceptance criteria, so plan one automated or headless-browser check per brief criterion (one shared command may cover several), add a product-spec scenario only when no brief criterion covers it, and assign each criterion to exactly one grader. Computer use is blocked; a criterion that needs it is graded blocked.",
-      "3. Ask feature Leads about risky contracts or areas when needed.",
-      "4. Do NOT call slp_define_pipeline yet; it is rejected until the engine hands the merged QA branch to you. End your turn when the plan is ready.",
+      "1. Read `.slp/standards/TEST_POLICY.md`; it already records how this project tests, so do not survey the test setup again.",
+      "2. Note only what the merged build will need: which shared commands, environments and heavy resources the product specs' acceptance criteria call for, which criteria need a rendered page (headless browser suite or blocked) and which prerequisites are missing. Do not draft per-criterion checks yet: the feature Leads have not locked their briefs, and the handover gives you the brief criterion IDs to assign. Computer use is blocked; a criterion that needs it is graded blocked.",
+      "3. Ask feature Leads only when a shared contract or verification prerequisite is unclear.",
+      "4. Do NOT call slp_define_pipeline yet; it is rejected until the engine hands the merged QA branch to you. End your turn when these notes are ready.",
     ].join("\n"),
   ].filter(Boolean).join("\n\n");
 }

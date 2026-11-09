@@ -115,6 +115,9 @@ describe("QA scorecard loop", () => {
     const graderBriefing = flow.mailTo(runId, graderId).at(-1)?.text ?? "";
     expect(graderBriefing).toContain("QA grader");
     expect(graderBriefing).toContain(SAMPLE_BRIEF.criteria[0].requirement);
+    // Graders score criteria, so the feature's approach and scope stay with the QA Lead.
+    expect(graderBriefing).not.toContain("**Approach**");
+    expect(graderBriefing).not.toContain("Overall Acceptance Criteria");
 
     const withoutScorecard = await flow.callAs(graderId, "slp_stage_report", { summary: "Looks fine." });
     expect(withoutScorecard.isError).toBe(true);
@@ -133,7 +136,10 @@ describe("QA scorecard loop", () => {
     await flow.deliverMail(runId);
     const rework = await flow.callAs(qaLeadId, "slp_stage_rework", { feedback: "Round totals to two decimals." });
     expect(rework.text).toContain("1/3");
-    expect(flow.mailTo(runId, fixerId).at(-1)?.text).toContain("Round totals to two decimals.");
+    const fixRequest = flow.mailTo(runId, fixerId).at(-1)?.text ?? "";
+    expect(fixRequest).toContain("Round totals to two decimals.");
+    // The graders run the fast tier on re-grade, so the fixer runs only the tests covering its fix.
+    expect(fixRequest).toContain("Run only the tests that cover your fix");
     const fixed = await flow.callAs(fixerId, "slp_stage_report", { summary: "Totals now use toFixed(2)." });
     expect(fixed.text).toContain("re-grade");
     expect(flow.mailTo(runId, qaLeadId).filter((mail) => mail.awaitTool === "slp_approve_stage")).toHaveLength(0);

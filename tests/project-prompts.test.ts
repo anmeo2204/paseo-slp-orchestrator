@@ -204,10 +204,18 @@ describe("project system prompt composition", () => {
     configuration.lead.workflow = "CUSTOM_LEAD_WORKFLOW: prioritize acceptance risk.";
 
     const customLeadPrompt = systemPromptFor("master_lead", configuration);
+    const customQaLeadPrompt = systemPromptFor("qa_lead", configuration);
     const customQaPrompt = systemPromptFor("peer", configuration, "qa-engineer");
     const customDeveloperPrompt = systemPromptFor("peer", configuration, "developer");
 
-    expect(customLeadPrompt).toContain("features: [invoice-regression]");
+    // Each Lead's catalog lists only the kinds its pipelines accept, with custom front-matter keys kept.
+    expect(customQaLeadPrompt).toContain("Role ID: qa-engineer");
+    expect(customQaLeadPrompt).toMatch(/features:\s*\n\s*- invoice-regression/);
+    expect(customQaLeadPrompt).not.toContain("Role ID: architect");
+    expect(customLeadPrompt).not.toContain("Role ID: qa-engineer");
+    expect(customLeadPrompt).toContain("Role ID: architect");
+    expect(customLeadPrompt).toContain("Role ID: developer");
+    expect(customQaLeadPrompt).not.toMatch(/^description:/m);
     expect(customLeadPrompt).toContain("CUSTOM_LEAD_WORKFLOW");
     expect(customLeadPrompt).not.toContain("PRIVATE_QA_WORKFLOW");
     expect(customQaPrompt).toContain("PRIVATE_QA_WORKFLOW");

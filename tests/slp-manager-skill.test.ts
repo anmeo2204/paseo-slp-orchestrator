@@ -60,6 +60,15 @@ describe("slp-manager project skill provisioning", () => {
     expect(parseYaml(policyYaml).tiers.integration.commands[0]).toMatchObject({ id: "browser-e2e", resource: "browser" });
   });
 
+  it("keeps QA preparation to shared prerequisites and maps criteria only after the briefs lock", () => {
+    const qaLeadWorkflow = defaultProjectPrompts().qaLead!.workflow;
+    const skill = renderSlpManagerSkillMarkdown();
+    expect(qaLeadWorkflow).toContain("Briefs are not locked yet, so do not draft per-criterion checks");
+    expect(qaLeadWorkflow).toContain("grade brief criterion IDs and add a product-spec scenario only when no brief criterion covers it");
+    expect(skill).toContain("briefs are not locked yet, so no per-criterion plan");
+    expect(skill).toContain("post-handover (map every feature brief criterion");
+  });
+
   it("documents targeted re-grades, one owner per criterion and per-pass feature scope in roles and skill", () => {
     const roles = defaultProjectPrompts();
     const qaPeer = roles.peers.find((peer) => peer.kind === "qa")!;
