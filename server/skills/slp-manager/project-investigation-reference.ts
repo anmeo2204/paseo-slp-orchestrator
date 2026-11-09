@@ -99,4 +99,8 @@ The engine runs every feature as \`[planning with advisors]? -> implement with o
 - [ ] Every heavy resource has process signatures, peak memory and \`max_concurrent\`.
 - [ ] \`.slp/standards/TEST_POLICY.md\` exists and every generated peer declares \`kind\` and a matching \`tier\` and cites its exact commands.
 - [ ] The catalog has a developer for every stack area features will touch and at least one \`qa\` grader.
+
+## Scope of Investigation Restrictions
+
+Record restrictions imposed for this investigation as historical session limits, separately from the ongoing test tier policy. Do not turn a review-only ban on running databases or services into a permanent QA restriction. Document how final QA can prepare disposable databases and fixtures with existing tools, verify isolation and connection identity, and clean up its own resources. Preserve explicit current human restrictions.
 `;

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { BUS_TOOL_DEFINITIONS } from "../server/bus/tool-schemas";
+import { QA_ENVIRONMENT_POLICY } from "../server/prompts/qa-policy";
 import { QA_BLUEPRINT } from "../server/project-setup/peer-blueprints";
 import { PEER_TEMPLATES_REFERENCE } from "../server/skills/slp-manager/peer-templates-reference";
 import { defaultProjectPrompts } from "../server/project-prompts/defaults";
@@ -110,6 +111,21 @@ describe("slp-manager project skill provisioning", () => {
     expect(roles.supervisor.workflow).toContain("whenever a Lead escalates");
     expect(BUS_TOOL_DEFINITIONS.slp_escalate.description).toContain("even before the rework cap");
     expect(BUS_TOOL_DEFINITIONS.slp_resume_pipeline.description).toContain("do not auto-resume");
+  });
+
+  it("keeps disposable QA preparation ahead of prerequisite escalation across seeded roles and skill references", () => {
+    const roles = defaultProjectPrompts();
+    const files = slpManagerSkillFiles();
+    const policyTemplate = files.find((file) => file.relativePath === "references/TEST_POLICY_TEMPLATE.md")!;
+    for (const text of [roles.qaLead!.workflow, roles.peers.find((peer) => peer.kind === "qa")!.workflow,
+      QA_BLUEPRINT.guidance, PEER_TEMPLATES_REFERENCE, renderSlpManagerSkillMarkdown(), policyTemplate.content]) {
+      expect(text).toContain(QA_ENVIRONMENT_POLICY);
+      expect(text).toContain("no product source edits");
+      expect(text).toContain("verify the actual connection identity and isolation before writes");
+      expect(text).toContain("explicit current human restriction");
+      expect(text).toContain("do not require an operator-provisioned database");
+      expect(text).toContain("slp_relay_decision before work resumes");
+    }
   });
 
   it("lists project-scoped provider skill directories under the selected repository", () => {

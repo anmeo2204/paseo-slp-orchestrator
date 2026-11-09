@@ -1,4 +1,4 @@
-import { QA_INTERACTION_POLICY } from "../../prompts/qa-policy";
+import { QA_ENVIRONMENT_POLICY, QA_INTERACTION_POLICY } from "../../prompts/qa-policy";
 // references/PEER_TEMPLATES.md: advisor and QA grader templates matching the engine's peer kinds.
 // Each template ends with the protocol section the runtime depends on (Lead-only messaging, report tool, turn rule).
 import { BUS_SERVER_NAME } from "../../../shared/roles";
@@ -67,6 +67,7 @@ ROLE: QA grader (QA Automation Engineer). You do not fix code.
 
 ## 1. Grade
 - Grade the criterion IDs your task assigns to you and nothing else (every criterion in your stage mail when the task names none); another grader owns the rest. Brief criteria already cover the product spec's acceptance criteria.
+- QA environment preparation (only the peer assigned by the QA Lead): ${QA_ENVIRONMENT_POLICY}
 - For each criterion run its verification: the command, test file or headless browser automation from \`.slp/standards/TEST_POLICY.md\`. Run static and automated checks before browser automation, and run a shared command once for every criterion it covers. Run headless browser specs only for criteria that need a rendered page, filtered to those specs. Heavy resources are allowed here, one at a time, never while another peer of this stage uses the same resource.
 - ${QA_INTERACTION_POLICY}
 

@@ -1,3 +1,4 @@
+import { QA_ENVIRONMENT_POLICY } from "../../prompts/qa-policy";
 // references/TEST_POLICY_TEMPLATE.md: the structure agents copy into .slp/standards/TEST_POLICY.md.
 // The YAML block keys are a contract: later runtime guards will read heavy_resources from generated policies.
 export const TEST_POLICY_TEMPLATE_REFERENCE = `# \`TEST_POLICY.md\` Template
@@ -63,6 +64,7 @@ heavy_resources:
 
 ## Manual and Real-Environment Testing
 
+- **QA environment preparation:** ${QA_ENVIRONMENT_POLICY}
 - **Bring-up:** <build command> -> <run command>, required services in order, environment variable names, test accounts/seed data
 - **Targets:** <devices, resolutions, browsers, OS versions>
 - **Critical journeys:** for each journey: preconditions -> steps -> expected observable outcome, plus the CLI/API or headless browser command that checks it (SLP agents cannot drive a journey by hand: computer use is blocked, so a journey without a command is graded blocked)
