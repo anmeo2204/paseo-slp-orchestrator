@@ -55,14 +55,17 @@ export function queueRegrade(mutableRun: Run, stage: StageState, fixReport: Stor
   const regradeAssignments = targetedGraders.length > 0
     ? targetedGraders
     : graderAgentIds.map((graderAgentId) => ({ graderAgentId, criterionIds: [] as string[] }));
+  const regressionOwnerId = regradeAssignments[0]?.graderAgentId;
   for (const { graderAgentId, criterionIds } of regradeAssignments) {
     const scope = criterionIds.length > 0
       ? `Re-grade only these criteria on the current worktree: ${criterionIds.join(", ")}.`
       : "Re-grade only the criteria this fix can affect on the current worktree.";
     mutableRun.mailbox.push(stageMail(graderAgentId, [
       `The developer finished a fix pass in stage '${stage.name}'. ${scope}`,
-      "Also run the fast-tier test command once; if it shows that a criterion you passed earlier now fails, add a fail entry for it. "
-        + "Submit slp_stage_report with a scorecard of only the criteria you re-graded; your earlier pass entries stand.",
+      graderAgentId === regressionOwnerId
+        ? "You own the single fast-tier regression run for this fix pass. Run it once and report any regression as a fail entry with evidence."
+        : "Another grader owns the fast-tier regression run for this fix pass; do not repeat that suite. Run only checks needed for your assigned criteria.",
+      "Submit slp_stage_report with a scorecard of only the criteria you re-graded; your earlier pass entries stand.",
       fixReportSection(fixReport),
     ].join("\n\n"), "slp_stage_report"));
   }

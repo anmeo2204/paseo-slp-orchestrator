@@ -87,6 +87,18 @@ describe("slp-manager project skill provisioning", () => {
     expect(BUS_TOOL_DEFINITIONS.slp_stage_report.description).toContain("a re-grade scorecard lists only the re-graded criteria");
   });
 
+  it("keeps single regression ownership and prerequisite escalation in the seeded QA contract", () => {
+    const roles = defaultProjectPrompts();
+    const skill = renderSlpManagerSkillMarkdown();
+    for (const text of [roles.qaLead!.workflow, skill]) {
+      expect(text).toContain("single fast-tier regression run per fix pass");
+      expect(text).toContain("blocked prerequisites, not code defects");
+    }
+    for (const text of [roles.peers.find((peer) => peer.kind === "qa")!.workflow, PEER_TEMPLATES_REFERENCE]) {
+      expect(text).toContain("only if the request assigns it to you");
+    }
+  });
+
   it("lists project-scoped provider skill directories under the selected repository", () => {
     const projectSkillRoots = defaultProjectSkillRoots("/tmp/fake-project");
     // Paseo providers scan .agents/skills (Antigravity, Codex, OMP) and .claude/skills (Claude Code) inside the repo root.

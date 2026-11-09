@@ -151,6 +151,25 @@ describe("QA scorecard loop", () => {
     expect(secondReview).toContain("Rework rounds used: 1/3");
   });
 
+  it("assigns a single regression run when multiple graders need to re-grade", async () => {
+    const flow = await createFlow({ mode: "FULL_AUTO" });
+    const { runId, qaLeadId, graderIds, fixerId } = await qaVerifyStage(flow, ["Grade C1", "Grade C2"]);
+    for (const [index, graderId] of graderIds.entries()) {
+      await flow.callAs(graderId, "slp_stage_report", { summary: "Fails.", scorecard: [
+        { criterionId: `C${index + 1}`, status: "fail", reason: "Wrong result.", evidence: "test failed" },
+      ] });
+    }
+    await flow.deliverMail(runId);
+    expect((await flow.callAs(qaLeadId, "slp_stage_rework", { feedback: "Fix both results." })).isError).toBe(false);
+    await flow.callAs(fixerId, "slp_stage_report", { summary: "Both results fixed." });
+    const requests = graderIds.map((id) => flow.mailTo(runId, id).at(-1)!);
+    expect(requests.every((mail) => mail.awaitTool === "slp_stage_report")).toBe(true);
+    expect(requests.filter((mail) => mail.text.includes("You own the single fast-tier regression run"))).toHaveLength(1);
+    expect(requests.filter((mail) => mail.text.includes("do not repeat that suite"))).toHaveLength(1);
+    expect(requests[0].text).toContain("current worktree: C1.");
+    expect(requests[1].text).toContain("current worktree: C2.");
+  });
+
   it("re-grades only the failed criteria of the graders that failed them after a fix", async () => {
     const flow = await createFlow({ mode: "FULL_AUTO" });
     const { runId, qaLeadId, graderIds: [failingGraderId, passingGraderId], fixerId } = await qaVerifyStage(flow, ["Grade C1 and C3", "Grade C2"]);

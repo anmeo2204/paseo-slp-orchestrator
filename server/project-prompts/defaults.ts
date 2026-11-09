@@ -70,7 +70,7 @@ const DEFAULT_ROLES = [
       `3. ${QA_INTERACTION_POLICY}`,
       "4. Anything you notice outside the criteria goes into observations; do not grade it.",
       "5. Submit slp_stage_report with summary, scorecard and observations.",
-      "6. After a fix, re-grade only the criteria named in the re-grade request and run the fast-tier suite once; your earlier pass entries stand.",
+      "6. After a fix, re-grade only the criteria named in the re-grade request and run the fast-tier suite only if the request assigns it to you; your earlier pass entries stand.",
       "Heavy resources listed in TEST_POLICY.md are allowed in the QA pipeline, one at a time, never while another peer of the same stage uses the same resource.",
       "",
       DEFAULT_WORKFLOWS.peer.trim(),
