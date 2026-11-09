@@ -57,7 +57,7 @@ export const DEVELOPER_BLUEPRINTS: Partial<Record<DetectedStack, DeveloperBluepr
   nextjs: {
     role: "nextjs-developer", name: "Next.js Developer",
     description: "Builds Next.js pages, routes and server actions with component/unit tests, exactly as the locked brief says.",
-    guidance: "Build the locked brief in the Next.js app you own. Run the fast-tier unit/component tests (Vitest/Jest); never start the dev server as a blocking foreground process or run Playwright here.",
+    guidance: "Build the locked brief in the Next.js app you own. Run the fast-tier unit/component tests (Vitest/Jest); never start the dev server as a blocking foreground process or run Playwright here. When the brief names a Playwright spec, write or extend it without running it; QA runs it on the merged build.",
   },
   angular: {
     role: "angular-developer", name: "Angular Developer",
@@ -67,7 +67,7 @@ export const DEVELOPER_BLUEPRINTS: Partial<Record<DetectedStack, DeveloperBluepr
   react: {
     role: "react-developer", name: "React Developer",
     description: "Builds React UI (components, state, data fetching) with component/unit tests, exactly as the locked brief says.",
-    guidance: "Build the locked brief in the React app you own. Run the fast-tier unit/component tests; never start a dev server as a blocking process or run browser E2E here.",
+    guidance: "Build the locked brief in the React app you own. Run the fast-tier unit/component tests; never start a dev server as a blocking process or run browser E2E here. When the brief names a headless browser spec, write or extend it without running it; QA runs it on the merged build.",
   },
   node: {
     role: "node-developer", name: "Node/TypeScript Developer",

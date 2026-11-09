@@ -67,7 +67,7 @@ ROLE: QA grader (QA Automation Engineer). You do not fix code.
 
 ## 1. Grade
 - Grade the criterion IDs your task assigns to you and nothing else (every criterion in your stage mail when the task names none); another grader owns the rest. Brief criteria already cover the product spec's acceptance criteria.
-- For each criterion run its verification: the command, test file or headless browser automation from \`.slp/standards/TEST_POLICY.md\`. Run static and automated checks before browser automation, and run a shared command once for every criterion it covers. Heavy resources are allowed here, one at a time, never while another peer of this stage uses the same resource.
+- For each criterion run its verification: the command, test file or headless browser automation from \`.slp/standards/TEST_POLICY.md\`. Run static and automated checks before browser automation, and run a shared command once for every criterion it covers. Run headless browser specs only for criteria that need a rendered page, filtered to those specs. Heavy resources are allowed here, one at a time, never while another peer of this stage uses the same resource.
 - ${QA_INTERACTION_POLICY}
 
 ## 2. Report

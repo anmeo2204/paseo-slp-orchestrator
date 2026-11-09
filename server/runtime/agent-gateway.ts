@@ -28,7 +28,7 @@ import {
   statusFromSnapshot,
 } from "./agent-gateway-helpers";
 import type { PaseoHolder } from "./paseo-holder";
-import { CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS } from "../hooks/computer-use";
+import { CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS, CODEX_COMPUTER_USE_MCP_OVERRIDES } from "../hooks/computer-use";
 
 export { isConfirmedMissingAgentError, permissionModeFor };
 
@@ -236,8 +236,9 @@ export class AgentGateway {
         );
         const selectedProviderId = activeModelSettings.provider.split("/", 1)[0];
         const providerFeatureValues = defaultFeatureValuesForProvider(activeModelSettings.provider);
-        // Codex validates provider options strictly and has no per-session tool deny list; the sweeper guard covers it.
-        const providerOptions = baseProviderId(selectedProviderId) === "claude"
+        const baseProvider = baseProviderId(selectedProviderId);
+        // Codex validates provider options strictly, so its computer-use servers are replaced through mcpServers instead.
+        const providerOptions = baseProvider === "claude"
           ? { ...spec.extraOptions, disallowedTools: [...CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS] }
           : spec.extraOptions;
         const baseSessionConfig = {
@@ -252,6 +253,7 @@ export class AgentGateway {
             spec.stageContext,
           ),
           mcpServers: {
+            ...(baseProvider === "codex" ? CODEX_COMPUTER_USE_MCP_OVERRIDES : {}),
             [BUS_SERVER_NAME]: {
               type: "http" as const,
               // load tool schemas up front; deferred tools made agents call slp_ tools with empty arguments

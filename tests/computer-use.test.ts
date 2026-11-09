@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS, isComputerUseTool } from "../server/hooks/computer-use";
+import { CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS, CODEX_COMPUTER_USE_MCP_SERVERS, isComputerUseTool } from "../server/hooks/computer-use";
 import { decidePermission } from "../server/hooks/permissions";
 import { AgentGateway } from "../server/runtime/agent-gateway";
 import type { PaseoHolder } from "../server/runtime/paseo-holder";
@@ -71,11 +71,24 @@ describe("computer-use tools at the Paseo creation boundary", () => {
     expect(creations[0].config.options).toEqual({ ...forkOptions, disallowedTools: [...CLAUDE_COMPUTER_USE_DISALLOWED_TOOLS] });
   });
 
-  it("sends no provider options Codex would reject", async () => {
+  it.each(["codex/gpt-5.4", "codex-slp/gpt-5.4"])("replaces the computer-use MCP servers on %s sessions", async (provider) => {
     const { creations, gateway: codexGateway } = gateway();
     await codexGateway.createAgent({
-      runId: "run-1", role: "peer", projectRole: "qa-engineer", taskId: null, provider: "codex/gpt-5.4", workspaceId: "ws", title: "QA", awaitTool: null,
+      runId: "run-1", role: "peer", projectRole: "qa-engineer", taskId: null, provider, workspaceId: "ws", title: "QA", awaitTool: null,
     });
     expect(creations[0].config.options).toBeUndefined();
+    const mcpServers = creations[0].config.mcpServers as Record<string, { type: string; command?: string }>;
+    for (const server of CODEX_COMPUTER_USE_MCP_SERVERS) {
+      expect(mcpServers[server]).toEqual({ type: "stdio", command: "/usr/bin/false", args: [] });
+    }
+    expect(mcpServers["slp-bus"]).toMatchObject({ type: "http" });
+  });
+
+  it("leaves Claude sessions without the Codex server replacements", async () => {
+    const { creations, gateway: claudeGateway } = gateway();
+    await claudeGateway.createAgent({
+      runId: "run-1", role: "peer", projectRole: "qa-engineer", taskId: null, provider: "claude/opus", workspaceId: "ws", title: "QA", awaitTool: null,
+    });
+    expect(Object.keys(creations[0].config.mcpServers as object)).toEqual(["slp-bus"]);
   });
 });

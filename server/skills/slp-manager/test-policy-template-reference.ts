@@ -36,6 +36,13 @@ tiers:
   integration:
     where: integration-qa
     manual_procedure: "## Manual and Real-Environment Testing"   # section of this file
+    commands:
+      # Only when the repository already has a headless browser suite; omit the entry otherwise.
+      # QA runs only the specs its criteria need (for example --grep C3), never the whole suite by default.
+      - id: browser-e2e
+        run: npx playwright test --reporter=line
+        resource: browser
+        measured: { wall_seconds: 60, peak_rss_mb: 1500, baseline: "14 passed" }
 heavy_resources:
   - id: unity-editor
     process_signatures: ["Unity", "-projectPath"]
@@ -74,5 +81,6 @@ heavy_resources:
 ## Unverified or Proposed Items
 
 - <items marked UNVERIFIED or PROPOSED that the human must confirm>
+- <when the product has UI criteria but no headless browser suite: PROPOSED adding one (for example Playwright with a few critical-journey specs) as its own SLP feature; until then such criteria are graded blocked and checked by the human>
 \`\`\`\`
 `;

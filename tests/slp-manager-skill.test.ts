@@ -38,8 +38,26 @@ describe("slp-manager project skill provisioning", () => {
     }
     expect(roles.qaLead!.workflow).toContain("Preserve these restrictions when delegating");
     expect(skill).toContain("guard.computer_use_blocked");
+    expect(skill).toContain("Codex sessions are created with their computer-use MCP servers (`cua_repl`, `node_repl`) replaced");
     expect(skill).toContain("every existing QA peer workflow (including manual/playtester roles)");
     expect(skill).toContain("apply role edits for future runs only");
+  });
+
+  it("routes rendered-page criteria to a declared headless browser suite, or to blocked when none exists", () => {
+    const roles = defaultProjectPrompts();
+    const qaPeer = roles.peers.find((peer) => peer.kind === "qa")!;
+    const skill = renderSlpManagerSkillMarkdown();
+    const templateFile = slpManagerSkillFiles().find((file) => file.relativePath.endsWith("TEST_POLICY_TEMPLATE.md"))!;
+    expect(roles.supervisor.workflow).toContain("declares no headless browser suite, say so with the draft");
+    expect(roles.lead.workflow).toContain("the developer writes it without running a browser and QA runs it on the merged build");
+    expect(roles.qaLead!.workflow).toContain("Use the headless browser suite only for criteria that need a rendered page");
+    expect(qaPeer.workflow).toContain("Run headless browser specs only for criteria that need a rendered page");
+    expect(PEER_TEMPLATES_REFERENCE).toContain("Run headless browser specs only for criteria that need a rendered page");
+    expect(skill).toContain("Run the headless browser suite only for criteria that need a rendered page");
+    expect(skill).toContain("never install one during migration");
+    expect(templateFile.content).toContain("id: browser-e2e");
+    const policyYaml = /```yaml\n([\s\S]*?)```/.exec(templateFile.content)![1];
+    expect(parseYaml(policyYaml).tiers.integration.commands[0]).toMatchObject({ id: "browser-e2e", resource: "browser" });
   });
 
   it("documents targeted re-grades, one owner per criterion and per-pass feature scope in roles and skill", () => {
