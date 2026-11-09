@@ -125,13 +125,10 @@ export function escalateStage(ctx: PipelineContext, caller: BusCaller, reason: s
     return submitStageReport(ctx, caller, { summary: reason, findings: [], status: "blocked" });
   }
   const { maxReworkRounds } = runOrchestration(run);
-  const reachedReworkCap = stage.reworkRounds >= maxReworkRounds;
-  pausePipeline(ctx, run.id, pipeline.id, `${stage.name}: ${reason}`, { awaitingHumanDecision: reachedReworkCap });
+  pausePipeline(ctx, run.id, pipeline.id, `${stage.name}: ${reason}`, { awaitingHumanDecision: true });
   // Notify the Supervisor when a Lead escalates a stage so the Supervisor has immediate visibility into blockers.
   if (run.supervisorAgentId && run.agents[run.supervisorAgentId] && !run.agents[run.supervisorAgentId].archivedAt) {
-    const supervisorText = reachedReworkCap
-      ? humanDecisionRequest(pipeline, stage, caller.agentId, reason, maxReworkRounds)
-      : `Lead (${caller.agentId}) escalated pipeline '${pipeline.name}' (${pipeline.id}) at stage '${stage.name}':\n${reason}\nInspect slp_get_pipeline({ pipelineId: "${pipeline.id}" }) or wait for the Lead to resume with slp_resume_pipeline.`;
+    const supervisorText = humanDecisionRequest(pipeline, stage, caller.agentId, reason, maxReworkRounds);
     ctx.mailbox.enqueue(run.id, run.supervisorAgentId, supervisorText, {
       taskId: null,
       awaitTool: null,
@@ -141,7 +138,5 @@ export function escalateStage(ctx: PipelineContext, caller: BusCaller, reason: s
       summary: `escalation: ${pipeline.name}/${stage.name}`,
     });
   }
-  return reachedReworkCap
-    ? "Stage escalated to the human through the Supervisor. End your turn until the decision arrives."
-    : "Stage escalated. End your turn until a recovery decision arrives.";
+  return "Stage escalated to the human through the Supervisor. End your turn until the decision arrives.";
 }

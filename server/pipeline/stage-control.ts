@@ -147,7 +147,7 @@ export function resumePipeline(
   const pipeline = requirePipeline(run, pipelineId);
   if (pipeline.status !== "paused") throw new ToolError("Only a paused pipeline can be resumed.");
   if (pipeline.gate) throw new ToolError("This pipeline is waiting for the human approval selected by its run mode.");
-  // The rework cap exists so the human, not the Lead, decides what happens after repeated failed rounds.
+  // Escalated blockers and capped rework wait for the human, never an automatic recovery decision.
   if (pipeline.awaitingHumanDecision && !options.relayedHumanDecision) {
     throw new ToolError("This pipeline is waiting for the human's decision, which the Supervisor relays. End your turn.");
   }
@@ -176,7 +176,7 @@ export function resumePipeline(
   return "Pipeline resumed with your decision. End your turn while its stage coordinator continues.";
 }
 
-// The Supervisor's only way to hand the human's verdict back to a rework-capped stage.
+// The Supervisor relays the human's verdict for an escalated stage, including prerequisite blockers.
 export function relayHumanDecision(ctx: PipelineContext, runId: string, pipelineId: string, decision: string): string {
   const pipeline = requirePipeline(ctx.store.require(runId), pipelineId);
   if (!pipeline.awaitingHumanDecision) throw new ToolError(`Pipeline '${pipeline.name}' is not waiting for a human decision.`);

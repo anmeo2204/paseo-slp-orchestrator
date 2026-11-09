@@ -78,13 +78,13 @@ export function humanDecisionRequest(
   ]));
   return [
     `## Human decision needed: pipeline '${pipeline.name}' (\`${pipeline.id}\`), stage '${stage.name}'`,
-    `The Lead (\`${leadAgentId}\`) used all ${maxReworkRounds} rework rounds without accepting the result and escalated:\n${leadReason}`,
+    `The Lead (\`${leadAgentId}\`) escalated after ${stage.reworkRounds}/${maxReworkRounds} rework rounds:\n${leadReason}`,
     pipeline.brief ? `### Locked Brief\n${formatBrief(pipeline.brief)}` : "",
     latestReportByAgent.size ? `### Latest Results\n${formatStageReports([...latestReportByAgent.values()])}` : "",
     [
       "### What To Do",
       "1. Present this to the human in Vietnamese: what passes, what still fails and why, and the Lead's recommendation.",
-      "2. Ask for the final decision (accept as is, rework with specific guidance, or drop/adjust scope) and end your turn.",
+      "2. Ask for the human decision and end your turn. Missing prerequisites require new evidence before checks resume; do not invent authorization, auto-resume, revive agents to bypass the hold, or rerun completed checks.",
       `3. When the human answers, call slp_relay_decision({ pipelineId: "${pipeline.id}", decision }) with their decision verbatim.`,
     ].join("\n"),
   ].filter(Boolean).join("\n\n");

@@ -63,7 +63,8 @@ export function pausePipeline(
     const mutablePipeline = mutableRun.pipelines[pipelineId];
     mutablePipeline.status = "paused";
     mutablePipeline.pausedReason = reason;
-    mutablePipeline.awaitingHumanDecision = Boolean(options.awaitingHumanDecision);
+    // A later recovery pause must never downgrade an existing human hold.
+    mutablePipeline.awaitingHumanDecision ||= Boolean(options.awaitingHumanDecision);
     mutablePipeline.updatedAt = new Date().toISOString();
     // A recovery decision replaces outstanding conversation waits as well as workflow obligations.
     for (const agent of Object.values(mutableRun.agents)) {
@@ -71,9 +72,13 @@ export function pausePipeline(
       agent.awaitingTool = null;
       agent.awaitingSince = null;
     }
+    mutableRun.mailbox = mutableRun.mailbox.filter((message) => {
+      const recipient = mutableRun.agents[message.toAgentId];
+      return recipient?.pipelineId !== pipelineId || !message.awaitTool;
+    });
     // Persist the notification with the pause so a reload cannot strand a pipeline without its owner knowing.
     // A human-decision pause owes the Lead nothing: the Supervisor relays the verdict and that resumes the stage.
-    mutableRun.mailbox.push(options.awaitingHumanDecision
+    mutableRun.mailbox.push(mutablePipeline.awaitingHumanDecision
       ? stageMail(targetLeadId, `Pipeline ${mutablePipeline.name} (${pipelineId}) paused for the human's decision: ${reason}\nThe Supervisor presents your latest results to the human and relays the decision to you. End your turn.`, null)
       : stageMail(targetLeadId,
         `Pipeline ${mutablePipeline.name} (${pipelineId}) paused: ${reason}\nInspect slp_get_pipeline, then use slp_resume_pipeline with a recovery decision.`, "slp_resume_pipeline"));

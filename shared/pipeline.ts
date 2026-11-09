@@ -243,7 +243,7 @@ export const PipelineStateSchema = PipelineDefinitionSchema.extend({
   brief: PipelineBriefSchema.nullable().default(null),
   briefLockedAt: z.string().nullable().default(null),
   pausedReason: z.string().nullable().default(null),
-  // True while a rework-capped stage waits for the human's decision relayed by the Supervisor;
+  // True while an escalated stage waits for the human's decision relayed by the Supervisor;
   // the Lead cannot resume it on its own and recovery must not assign it slp_resume_pipeline.
   awaitingHumanDecision: z.boolean().default(false),
   createdAt: z.string(),
@@ -259,7 +259,7 @@ export const PipelineStateSchema = PipelineDefinitionSchema.extend({
 });
 export type PipelineState = z.infer<typeof PipelineStateSchema>;
 
-// A paused pipeline only owes its Lead slp_resume_pipeline when neither a human gate nor a capped-rework decision holds it.
+// A paused pipeline only owes its Lead slp_resume_pipeline when neither a human gate nor an escalated human decision holds it.
 export function awaitsLeadRecovery(pipeline: Pick<PipelineState, "status" | "gate" | "awaitingHumanDecision">): boolean {
   return pipeline.status === "paused" && !pipeline.gate && !pipeline.awaitingHumanDecision;
 }

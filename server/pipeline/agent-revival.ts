@@ -38,6 +38,12 @@ export async function reviveMasterLead(
     ) {
       return null;
     }
+    const unfinishedPipelines = Object.values(initialRun.pipelines).filter(
+      (pipeline) => !["completed", "integrated", "failed"].includes(pipeline.status),
+    );
+    if (unfinishedPipelines.length > 0 && unfinishedPipelines.every((pipeline) => pipeline.awaitingHumanDecision)) {
+      return null;
+    }
     const previousMasterLeadId = initialRun.masterLeadAgentId;
     const previousMasterLeadRecord = initialRun.agents[previousMasterLeadId];
     const previousAwaitingTool = previousMasterLeadRecord?.awaitingTool ?? null;
@@ -200,6 +206,7 @@ export async function markStageParticipantForRevival(
   const currentRun = ctx.store.require(runId);
   const participantRecord = currentRun.agents[targetAgentId];
   if (!participantRecord || !participantRecord.pipelineId || !participantRecord.stageId) return null;
+  if (currentRun.pipelines[participantRecord.pipelineId]?.awaitingHumanDecision) return null;
   const wasAlreadyArchived = Boolean(participantRecord.archivedAt) || Boolean(liveStatuses?.get(targetAgentId)?.archived);
   const archivedAt = new Date().toISOString();
   let affectedPipelineId: string | null = null;
@@ -252,6 +259,9 @@ function selectStageTargetsForCohortRevival(
   liveStatuses: Map<string, AgentLiveStatus>,
 ): string[] {
   const targetPipeline = requirePipeline(run, pipelineId);
+  if (targetPipeline.awaitingHumanDecision) {
+    throw new ToolError("This pipeline is waiting for a human decision. Revival cannot bypass the hold; wait for slp_relay_decision.");
+  }
   const currentStage = targetPipeline.stages[targetPipeline.currentStageIndex];
   if (!currentStage) throw new ToolError(`Pipeline '${targetPipeline.name}' has no active stage to revive.`);
   const stageParticipants = [currentStage.forkedLeadAgentId, ...currentStage.peerAgentIds].filter(
@@ -352,7 +362,7 @@ export async function reviveAgentsOnDemand(
   const latestRun = ctx.store.require(caller.runId);
   let touchedPipelines = false;
   for (const pipeline of Object.values(latestRun.pipelines)) {
-    if (["completed", "integrated"].includes(pipeline.status) || pipeline.gate) continue;
+    if (["completed", "integrated"].includes(pipeline.status) || pipeline.gate || pipeline.awaitingHumanDecision) continue;
     const currentStage = pipeline.stages[pipeline.currentStageIndex];
     if (!currentStage) continue;
     const stageParticipants = [currentStage.forkedLeadAgentId, ...currentStage.peerAgentIds].filter(
@@ -376,7 +386,7 @@ export async function reviveAgentsOnDemand(
   }
   // If auto-detection found no archived/error flag but Supervisor asked to revive during planning/running, revive the active owner.
   if (revivalSummaries.length === 0) {
-    const activePipelines = Object.values(latestRun.pipelines).filter((pipeline) => !["completed", "integrated"].includes(pipeline.status));
+    const activePipelines = Object.values(latestRun.pipelines).filter((pipeline) => !["completed", "integrated"].includes(pipeline.status) && !pipeline.awaitingHumanDecision);
     if (activePipelines.length > 0) {
       const targetPipeline = activePipelines.at(-1)!;
       const targetAgentIds = selectStageTargetsForCohortRevival(latestRun, targetPipeline.id, liveStatuses);
@@ -385,7 +395,7 @@ export async function reviveAgentsOnDemand(
         revivalSummaries.push(`stage:${targetAgentId}`);
         touchedPipelines = true;
       }
-    } else if (caller.role === "supervisor") {
+    } else if (caller.role === "supervisor" && !Object.values(latestRun.pipelines).some((pipeline) => pipeline.awaitingHumanDecision)) {
       const replacementLead = await reviveMasterLead(ctx, caller.runId, manualReason, liveStatuses);
       if (replacementLead) revivalSummaries.push(`master_lead:${latestRun.masterLeadAgentId}->${replacementLead.agentId}`);
     }

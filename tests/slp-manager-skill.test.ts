@@ -99,6 +99,19 @@ describe("slp-manager project skill provisioning", () => {
     }
   });
 
+  it("documents human holds for every Lead escalation in seeded workflows and the provisioned skill", () => {
+    const roles = defaultProjectPrompts();
+    const skill = renderSlpManagerSkillMarkdown();
+    for (const text of [roles.lead.workflow, roles.qaLead!.workflow, skill]) {
+      expect(text).toContain("Every Lead escalation pauses for a human decision, even before the rework cap");
+      expect(text).toContain("Do not auto-resume");
+      expect(text).toContain("missing prerequisites require new evidence");
+    }
+    expect(roles.supervisor.workflow).toContain("whenever a Lead escalates");
+    expect(BUS_TOOL_DEFINITIONS.slp_escalate.description).toContain("even before the rework cap");
+    expect(BUS_TOOL_DEFINITIONS.slp_resume_pipeline.description).toContain("do not auto-resume");
+  });
+
   it("lists project-scoped provider skill directories under the selected repository", () => {
     const projectSkillRoots = defaultProjectSkillRoots("/tmp/fake-project");
     // Paseo providers scan .agents/skills (Antigravity, Codex, OMP) and .claude/skills (Claude Code) inside the repo root.

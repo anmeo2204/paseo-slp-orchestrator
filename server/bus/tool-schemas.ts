@@ -42,7 +42,7 @@ export const BUS_TOOL_DEFINITIONS = {
   },
   slp_resume_pipeline: {
     roles: ["master_lead", "qa_lead"],
-    description: "Resume a paused pipeline with a decision or new guidance.",
+    description: "Resume a recoverable paused pipeline with guidance. Escalated pipelines wait for the human through slp_relay_decision; do not auto-resume them. End your turn after success.",
     input: z.object({ pipelineId: pipelineIdField, feedback: z.string().trim().min(1) }),
   },
   // One-way: queued for the recipient, nothing waits on it. Use slp_ask when the answer is needed to proceed.
@@ -102,7 +102,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // The QA Lead needs it too: after the rework cap, escalating is how the scorecard reaches the human.
   slp_escalate: {
     roles: ["master_lead", "qa_lead", "peer"],
-    description: "Escalate a blocked stage or implementation decision to the Lead.",
+    description: "Peers report a blocker to their Lead. A Lead pauses the pipeline for a human decision through the Supervisor, even before the rework cap. No automatic resume or approval obligation remains. End your turn after success.",
     input: z.object({ reason: z.string().trim().min(1) }),
   },
   // The Supervisor records the exact spec text it wants approved; the human then approves it in the SLP
@@ -130,7 +130,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // Closes the loop of a rework-capped stage: the human decided in chat, the Supervisor hands that decision to the Lead.
   slp_relay_decision: {
     roles: ["supervisor"],
-    description: "Relay the human's decision on a pipeline that reached its rework cap back to its Lead (resets the stage's rework counter).",
+    description: "Relay an actual human decision on an escalated pipeline back to its Lead, including blocked prerequisites (resets the stage's rework counter). Never synthesize a decision to auto-resume.",
     input: z.object({ pipelineId: pipelineIdField, decision: z.string().trim().min(1) }),
   },
   slp_present_to_manager: {
@@ -147,7 +147,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // Enables the Supervisor or Lead to manually respawn dead, archived or stalled sessions on demand.
   slp_revive_agent: {
     roles: ["supervisor", "master_lead", "qa_lead"],
-    description: "Revive dead, archived, errored or stalled Lead or stage Peer agents and resume their pending obligation.",
+    description: "Revive dead, archived, errored or stalled Lead or stage Peer agents and resume their pending obligation. Stage revival cannot bypass an escalated human hold.",
     input: z.object({
       target: z.enum(["auto", "master_lead", "stage_cohort", "agent"]).default("auto"),
       agentId: z.string().trim().min(1).optional(),

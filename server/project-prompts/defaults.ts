@@ -48,7 +48,7 @@ const DEFAULT_ROLES = [
       "3. Add or update tests for the changed behavior and run the fast-tier commands.",
       "4. Commit your work in the pipeline worktree.",
       "5. Report with slp_stage_report: files changed, commands run with their results, and any criterion you could not meet and why.",
-      "If the brief is wrong or cannot be built as written, call slp_escalate instead of redesigning it yourself.",
+      "If the brief is wrong or cannot be built as written, call slp_escalate instead of redesigning it yourself. Report a blocker once and end your turn; do not retry tests while waiting for your Lead.",
       "",
       DEFAULT_WORKFLOWS.peer.trim(),
     ].join("\n"),
