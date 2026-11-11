@@ -61,6 +61,23 @@ describe("slp-manager project skill provisioning", () => {
     expect(parseYaml(policyYaml).tiers.integration.commands[0]).toMatchObject({ id: "browser-e2e", resource: "browser" });
   });
 
+  it("forbids passing visual criteria from code alone and requires trying cached Playwright before 'no browser'", () => {
+    const roles = defaultProjectPrompts();
+    const qaPeer = roles.peers.find((peer) => peer.kind === "qa")!;
+    const skill = renderSlpManagerSkillMarkdown();
+    for (const text of [roles.qaLead!.workflow, qaPeer.workflow, QA_BLUEPRINT.guidance, PEER_TEMPLATES_REFERENCE, skill]) {
+      expect(text).toContain("do not justify pass");
+      expect(text).toContain("Never instruct a grader to pass a visual criterion on code and tests alone");
+      expect(text).toContain("already-cached Playwright browsers");
+      expect(text).toContain("~/Library/Caches/ms-playwright");
+    }
+    expect(roles.qaLead!.workflow).toContain('never write that visual criteria are "graded on code and tests only"');
+    expect(roles.qaLead!.workflow).toContain("list separately every criterion graded blocked because its visual result was not observed");
+    expect(roles.supervisor.workflow).toContain("list separately every criterion graded blocked because its visual result was not observed");
+    expect(qaPeer.workflow).toContain("Visual results (width, layout, color, legend, compactness) that you did not observe");
+    expect(skill).toContain("list separately every criterion graded blocked because its visual result was not observed");
+  });
+
   it("keeps QA preparation to shared prerequisites and maps criteria only after the briefs lock", () => {
     const qaLeadWorkflow = defaultProjectPrompts().qaLead!.workflow;
     const skill = renderSlpManagerSkillMarkdown();
@@ -332,15 +349,18 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).toContain("Final approval is pinned to one commit.");
     expect(skillMarkdown).toContain("merges that SHA, never the branch name");
     expect(skillMarkdown).toContain("it does not show who approved");
-    expect(skillMarkdown).toMatch(/7\. \*\*Final-merge commit pinning:\*\*/);
+    expect(skillMarkdown).toMatch(/7\. \*\*Final-merge commit pinning and scorecard completeness:\*\*/);
+    expect(skillMarkdown).toContain("Coded product-spec criteria gate");
     expect(skillMarkdown).toContain("Nothing may be committed to the QA branch between the two");
     const { supervisor, qaLead } = defaultProjectPrompts();
     expect(supervisor.workflow).toContain("Final review is pinned to one commit");
     expect(supervisor.workflow).toContain("merges exactly the pinned commit");
+    expect(supervisor.workflow).toContain("coded product-spec criteria (C1…)");
     expect(supervisor.workflow).toContain("call slp_request_rework so the current branch is verified again");
     expect(qaLead?.workflow).toContain("nothing may be committed to the QA branch after slp_finalize_pipeline");
     expect(BUS_TOOL_DEFINITIONS.slp_report.description).toContain("pin the QA-verified commit");
     expect(BUS_TOOL_DEFINITIONS.slp_present_to_manager.description).toContain("Merges exactly the commit pinned by slp_report");
+    expect(BUS_TOOL_DEFINITIONS.slp_present_to_manager.description).toContain("coded criteria (C1…)");
   });
 
   it("documents short Codex model IDs under codex-slp and warns against codex/ models there", () => {

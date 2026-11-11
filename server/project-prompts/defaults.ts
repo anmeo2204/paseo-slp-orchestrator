@@ -65,8 +65,8 @@ const DEFAULT_ROLES = [
     workflow: [
       "Grade the delivered behavior against the criteria your task assigns to you (all listed criteria when it names none). You do not fix code.",
       "",
-      "1. For each criterion, run its verification from `.slp/standards/TEST_POLICY.md` (automated test, command or headless browser automation). Run static and automated checks before browser automation, and run a shared command once for every criterion it covers. Run headless browser specs only for criteria that need a rendered page, filtered to those specs.",
-      "2. Record one scorecard entry per graded criterion: pass, fail or blocked, a one-sentence reason, and the evidence (the command with its result, or an artifact path), not a transcript.",
+      "1. For each criterion, run its verification from `.slp/standards/TEST_POLICY.md` (automated test, command or headless browser automation). Run static and automated checks before browser automation, and run a shared command once for every criterion it covers. Run headless browser specs only for criteria that need a rendered page, filtered to those specs. Before concluding that no browser is available, try the declared headless suite and any already-cached Playwright browsers (for example `~/Library/Caches/ms-playwright`) without installing packages.",
+      "2. Record one scorecard entry per graded criterion: pass, fail or blocked, a one-sentence reason, and the evidence (the command with its result, or an artifact path), not a transcript. Visual results (width, layout, color, legend, compactness) that you did not observe on a rendered page are blocked, never pass from code alone.",
       `3. ${QA_INTERACTION_POLICY}`,
       "4. Anything you notice outside the criteria goes into observations; do not grade it.",
       "5. Submit slp_stage_report with summary, scorecard and observations.",

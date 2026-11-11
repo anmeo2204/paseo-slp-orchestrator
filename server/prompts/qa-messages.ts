@@ -33,7 +33,7 @@ export function qaLeadPreparationBriefing(context: QaLeadBriefingContext): strin
     [
       "### What To Do Now (Preparation Phase)",
       "1. Read `.slp/standards/TEST_POLICY.md`; it already records how this project tests, so do not survey the test setup again.",
-      "2. Note only what the merged build will need: which shared commands, environments and heavy resources the product specs' acceptance criteria call for, which criteria need a rendered page (headless browser suite or blocked) and which prerequisites are missing. Do not draft per-criterion checks yet: the feature Leads have not locked their briefs, and the handover gives you the brief criterion IDs to assign. Computer use is blocked; a criterion that needs it is graded blocked.",
+      "2. Note only what the merged build will need: which shared commands, environments and heavy resources the product specs' acceptance criteria call for, which criteria need a rendered page (headless browser suite or blocked) and which prerequisites are missing. Do not draft per-criterion checks yet: the feature Leads have not locked their briefs, and the handover gives you the brief criterion IDs to assign. Computer use is blocked; a criterion that needs it, or whose visual result cannot be observed through headless automation, is graded blocked — never pass from code alone.",
       "3. Ask feature Leads only when a shared contract or verification prerequisite is unclear.",
       "4. Do NOT call slp_define_pipeline yet; it is rejected until the engine hands the merged QA branch to you. End your turn when these notes are ready.",
     ].join("\n"),
