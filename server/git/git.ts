@@ -94,8 +94,15 @@ export async function mergeIntegrationIntoBase(
     throw new Error(`Repository is on '${checkedOutBranch}', expected base branch '${baseBranch}'`);
   }
   // Untracked files are ignored on purpose; only tracked changes can conflict with the merge.
-  const dirtyStatus = (await runGit(repoPath, ["status", "--porcelain", "--untracked-files=no"])).trim();
-  if (dirtyStatus) throw new Error("Base branch has uncommitted changes; commit or stash them first");
+  const dirtyPaths = parsePorcelainPaths(
+    await runGit(repoPath, ["status", "--porcelain=v1", "-z", "--untracked-files=no"]),
+  );
+  if (dirtyPaths.length > 0) {
+    throw new Error(
+      `Base branch has uncommitted changes (${dirtyPaths.join(", ")}); commit or stash them first. ` +
+        "After the base is clean, Approve the merge in SLP Orchestrator or call slp_present_to_manager again.",
+    );
+  }
   // When Leads share the Supervisor's checkout, pipeline branches are already merged directly into baseBranch during finalization.
   if (integrationBranch === baseBranch) {
     return (await runGit(repoPath, ["rev-parse", "HEAD"])).trim();

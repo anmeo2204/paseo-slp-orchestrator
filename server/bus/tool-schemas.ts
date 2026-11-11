@@ -135,7 +135,7 @@ export const BUS_TOOL_DEFINITIONS = {
   },
   slp_present_to_manager: {
     roles: ["supervisor"],
-    description: "Declare the result verified and present it to the Supreme Manager for final approval. Merges exactly the commit pinned by slp_report and refuses if the QA branch moved since. Also refuses when the product Spec lists coded criteria (C1…) that the merged QA scorecard does not cover with a pass; re-grade reports keep earlier passes by criterionId.",
+    description: "Declare the result verified and present it to the Supreme Manager for final approval. Merges exactly the commit pinned by slp_report and refuses if the QA branch moved since. Also refuses when the product Spec lists coded criteria (C1…) that the merged QA scorecard does not cover with a pass; re-grade reports keep earlier passes by criterionId. When auto-merge is blocked by a dirty base checkout, the reply names the dirty files; after the base is clean, call this tool again (the pinned finalReview remains) or Approve in SLP Orchestrator.",
     input: z.object({ report: z.string().trim().min(1) }),
   },
   // Only the QA Lead reports, so the Supervisor never receives a merged result that nobody verified.

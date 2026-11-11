@@ -28,6 +28,7 @@ import {
 import { abortRunRpc, approveGateRpc, startRunRpc } from "../../shared/rpc";
 import { originLogFields, rpcOrigin, type ActionOrigin } from "./action-origin";
 import { archiveAgentLogged, type PipelineContext } from "./context";
+import { assertMergedScorecardCoversProductSpec } from "./scorecard-completeness";
 import { ToolError } from "./tool-error";
 import { stageMail } from "./stage-mail";
 
@@ -293,7 +294,21 @@ function requestQaRework(ctx: PipelineContext, runId: string, feedback: string):
 
 export async function presentToManager(ctx: PipelineContext, runId: string, assessment: string, supervisorAgentId: string): Promise<string> {
   const run = ctx.store.require(runId);
-  if (run.status !== "reporting") throw new ToolError("There is no Master Lead report to present yet.");
+  // A blocked auto-merge leaves the run at awaiting_user with finalReview still pinned; the Supervisor may call again
+  // after the base checkout is cleaned, instead of being told there is no report.
+  const retryingBlockedMerge = run.status === "awaiting_user" && Boolean(run.finalReview || run.finalReport);
+  if (run.status === "completed") {
+    throw new ToolError("This run is already completed; the verified result was merged.");
+  }
+  if (run.status !== "reporting" && !retryingBlockedMerge) {
+    if (run.finalReview || run.finalReport) {
+      throw new ToolError(
+        `A verified report is already on file (run status '${run.status}', finalReview ${run.finalReview?.commit?.slice(0, 12) ?? "none"}). ` +
+          "Inspect slp_get_run; do not expect a fresh Master Lead report.",
+      );
+    }
+    throw new ToolError("There is no Master Lead report to present yet.");
+  }
   ctx.store.mutate(runId, (mutableRun) => {
     mutableRun.status = "awaiting_user";
     mutableRun.supervisorReport = assessment;
@@ -322,14 +337,14 @@ export async function presentToManager(ctx: PipelineContext, runId: string, asse
           openedAt: new Date().toISOString(),
           note: reviewIsStale
             ? `The final merge into '${mutableRun.baseBranch}' was refused (${failureNote}). Approving cannot merge it; the result must be re-verified through rework.`
-            : `Auto-merge into '${mutableRun.baseBranch}' was blocked (${failureNote}). Clean the base checkout and approve to merge.`,
+            : `Auto-merge into '${mutableRun.baseBranch}' was blocked (${failureNote}). After the base is clean, Approve in SLP Orchestrator or call slp_present_to_manager again.`,
         };
       }
     });
     if (reviewIsStale) {
       return `Result verified, but the final merge into ${run.baseBranch} was refused: ${failureNote} Call slp_request_rework so the QA Lead re-verifies the current branch, tell the Supreme Manager in Vietnamese, then end your turn.`;
     }
-    return `Result verified, but auto-merge into ${run.baseBranch} was blocked: ${failureNote}. Inform the Supreme Manager in Vietnamese, then end your turn.`;
+    return `Result verified, but auto-merge into ${run.baseBranch} was blocked: ${failureNote} Inform the Supreme Manager in Vietnamese, then end your turn.`;
   }
 }
 
@@ -375,6 +390,8 @@ async function mergeReviewedResult(ctx: PipelineContext, runId: string, origin: 
     }
     throw staleReviewError;
   }
+  // Coded product-spec criteria (C1…) must still pass on the merged QA scorecard; re-grade subsets keep earlier passes.
+  assertMergedScorecardCoversProductSpec(run);
   // Merge happens before the status change so a conflict leaves the run awaiting approval and the human can retry.
   const mergeCommit = await mergeIntegrationIntoBase(run.repoPath, baseBranch, integrationBranch, review?.commit ?? null);
   ctx.store.mutate(runId, (mutableRun) => {

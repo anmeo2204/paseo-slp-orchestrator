@@ -112,7 +112,10 @@ async function runAtFinalApprovalGate(flow: Flow): Promise<{ runId: string; veri
   const trackedFile = dirtyBaseCheckout(flow);
   const presented = await flow.callAsRole(runId, "supervisor", null, "slp_present_to_manager", { report: "Đã kiểm tra." });
   expect(presented.text).toContain("auto-merge");
+  expect(presented.text).toContain(trackedFile);
+  expect(presented.text).toMatch(/Approve the merge in SLP Orchestrator|call slp_present_to_manager again/);
   expect(flow.run(runId)).toMatchObject({ status: "awaiting_user", gate: { kind: "final_approval" } });
+  expect(flow.run(runId).gate?.note).toContain(trackedFile);
   return { runId, verifiedCommit, trackedFile };
 }
 
@@ -199,6 +202,50 @@ describe("final merge commit pinning", () => {
       cleanBaseCheckout(flow, trackedFile);
       await call(approveMainRpc, { runId });
       expect(git(flow.repoPath, "rev-parse", "HEAD^2")).toBe(verifiedCommit);
+    });
+  });
+
+  describe("dirty base checkout blocks merge with a retry path", () => {
+    it("names the dirty files and lets the Supervisor call slp_present_to_manager again after the base is clean", async () => {
+      const flow = await createFlow({ mode: "FULL_AUTO" });
+      const { runId, verifiedCommit, trackedFile } = await runAtFinalApprovalGate(flow);
+      const firstPresentation = await flow.callAsRole(runId, "supervisor", null, "slp_present_to_manager", {
+        report: "Thử lại khi base còn bẩn.",
+      });
+      expect(firstPresentation.isError).toBe(false);
+      expect(firstPresentation.text).toContain(trackedFile);
+      expect(firstPresentation.text).toMatch(/Approve the merge in SLP Orchestrator|call slp_present_to_manager again/);
+      expect(firstPresentation.text).not.toContain("There is no Master Lead report to present yet");
+      expect(flow.run(runId)).toMatchObject({
+        status: "awaiting_user",
+        finalReview: { commit: verifiedCommit },
+        gate: { kind: "final_approval" },
+      });
+      expect(flow.run(runId).gate?.note).toContain(trackedFile);
+
+      cleanBaseCheckout(flow, trackedFile);
+      const retried = await flow.callAsRole(runId, "supervisor", null, "slp_present_to_manager", {
+        report: "Base đã sạch, merge lại.",
+      });
+      expect(retried.isError).toBe(false);
+      expect(retried.text).toContain("merged");
+      expect(flow.run(runId).status).toBe("completed");
+      expect(git(flow.repoPath, "rev-parse", "HEAD^2")).toBe(verifiedCommit);
+    });
+
+    it("the git merge lists dirty paths and tells the caller how to continue", async () => {
+      const rootDirectory = await createTemporaryDirectory("dirty-base-merge");
+      const { repoPath, baseBranch } = createGitRepository(join(rootDirectory, "repo"));
+      git(repoPath, "checkout", "-b", "slp/qa");
+      commitFiles(repoPath, { "src/reviewed.ts": "export const reviewed = true;\n" }, "reviewed");
+      const reviewedCommit = git(repoPath, "rev-parse", "HEAD");
+      git(repoPath, "checkout", baseBranch);
+      const dirtyFile = git(repoPath, "ls-files").split("\n")[0];
+      appendFileSync(join(repoPath, dirtyFile), "\nlocal edit\n");
+
+      await expect(mergeIntegrationIntoBase(repoPath, baseBranch, "slp/qa", reviewedCommit)).rejects.toThrow(
+        new RegExp(`uncommitted changes \\(${dirtyFile}\\).*Approve the merge in SLP Orchestrator or call slp_present_to_manager again`),
+      );
     });
   });
 

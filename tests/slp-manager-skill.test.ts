@@ -357,10 +357,14 @@ describe("slp-manager project skill provisioning", () => {
     expect(supervisor.workflow).toContain("merges exactly the pinned commit");
     expect(supervisor.workflow).toContain("coded product-spec criteria (C1…)");
     expect(supervisor.workflow).toContain("call slp_request_rework so the current branch is verified again");
+    expect(supervisor.workflow).toContain("call slp_present_to_manager again (finalReview stays pinned)");
+    expect(supervisor.workflow).toContain("do not claim there is no report");
     expect(qaLead?.workflow).toContain("nothing may be committed to the QA branch after slp_finalize_pipeline");
     expect(BUS_TOOL_DEFINITIONS.slp_report.description).toContain("pin the QA-verified commit");
     expect(BUS_TOOL_DEFINITIONS.slp_present_to_manager.description).toContain("Merges exactly the commit pinned by slp_report");
     expect(BUS_TOOL_DEFINITIONS.slp_present_to_manager.description).toContain("coded criteria (C1…)");
+    expect(BUS_TOOL_DEFINITIONS.slp_present_to_manager.description).toContain("names the dirty files");
+    expect(skillMarkdown).toContain("do not claim there is no report");
   });
 
   it("documents short Codex model IDs under codex-slp and warns against codex/ models there", () => {
