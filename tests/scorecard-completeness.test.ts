@@ -6,6 +6,7 @@ import {
   findScorecardGaps,
   mergeGraderScorecard,
   mergedCriterionStatuses,
+  mergedScorecardForRun,
 } from "../server/pipeline/scorecard-completeness";
 import type { PipelineState, ScorecardEntry, StoredStageReport } from "../shared/pipeline";
 import type { AgentRecord, Run } from "../shared/state";
@@ -187,13 +188,10 @@ describe("mergeGraderScorecard / mergedCriterionStatuses", () => {
     ];
     expect(mergeGraderScorecard(reports, "grader")).toHaveLength(11);
     const statuses = mergedCriterionStatuses(qaPipeline(reports));
-    expect([...statuses.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))).toEqual([
-      "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11",
-    ]);
-    expect(findScorecardGaps(
-      ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11"],
-      statuses,
-    )).toEqual({ missing: [], notPass: [] });
+    const keys = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11"]
+      .map((code) => `payroll-task-7d10a1.${code}`);
+    expect([...statuses.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))).toEqual(keys);
+    expect(findScorecardGaps(keys, statuses)).toEqual({ missing: [], notPass: [] });
   });
 
   it("still surfaces a criterion that never returned to pass", () => {
@@ -201,9 +199,9 @@ describe("mergeGraderScorecard / mergedCriterionStatuses", () => {
       report("grader", [entry("task.C1", "fail"), entry("task.C2", "fail")]),
       report("grader", [entry("task.C1", "pass")]),
     ];
-    expect(findScorecardGaps(["C1", "C2"], mergedCriterionStatuses(qaPipeline(reports)))).toEqual({
+    expect(findScorecardGaps(["task.C1", "task.C2"], mergedCriterionStatuses(qaPipeline(reports)))).toEqual({
       missing: [],
-      notPass: ["C2 (fail)"],
+      notPass: ["task.C2 (fail)"],
     });
   });
 });
@@ -229,6 +227,114 @@ describe("assertMergedScorecardCoversProductSpec", () => {
 
   it("refuses merge when a Spec code is missing from the merged scorecard", () => {
     const reports = [report("grader", [entry("feat.C1"), entry("feat.C2")])];
-    expect(() => assertMergedScorecardCoversProductSpec(runWith(qaPipeline(reports), codedSpec))).toThrow(/missing from the merged QA scorecard: C3/);
+    expect(() => assertMergedScorecardCoversProductSpec(runWith(qaPipeline(reports), codedSpec))).toThrow(/missing from the merged QA scorecard: payroll\.C3/);
+  });
+
+  it("accepts a later wave whose own codes pass and ignores an earlier wave's extra codes", () => {
+    const cardA = "card-a-95f780";
+    const cardB = "card-b-efc0f1";
+    const specA = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"].map((code) => `- [ ] ${code}: a`).join("\n");
+    const specB = ["C1", "C2", "C3", "C4", "C5", "C6", "C7"].map((code) => `- [ ] ${code}: b`).join("\n");
+    const verified = "7ee828411c2d2f05356b4de8c4aad7fe23cdf19f";
+    const cardBReport = report("grader", ["C1", "C2", "C3", "C4", "C5", "C6", "C7"].map((code) => entry(`${cardB}.${code}`)));
+    const cardAExtras = report("grader", [entry(`${cardA}.C8`), entry(`${cardA}.C9`)]);
+    const wave2Full = { ...qaPipeline([cardBReport]), id: "qa-wave2-full", mergedCommit: verified, createdAt: "2026-11-14T13:43:05.370Z", integratedAt: "2026-11-14T13:50:15.468Z" };
+    const wave2Extras = { ...qaPipeline([cardAExtras]), id: "qa-wave2-extras", mergedCommit: verified, createdAt: "2026-11-14T14:01:47.332Z", integratedAt: "2026-11-14T14:09:45.830Z" };
+    const run = runWith(wave2Extras, specB);
+    run.agents["lead-a"] = { ...lead(specA), agentId: "lead-a", featureName: cardA };
+    run.agents["lead-1"] = { ...lead(specB), featureName: cardB };
+    run.pipelines["feat-a"] = {
+      ...featurePipeline(),
+      id: "feat-a",
+      leadAgentId: "lead-a",
+      integratedAt: "2026-11-14T09:54:40.320Z",
+      mergedCommit: "3beecda5",
+    };
+    run.pipelines["feat-1"] = {
+      ...featurePipeline(),
+      leadAgentId: "lead-1",
+      integratedAt: "2026-11-14T13:11:14.064Z",
+      mergedCommit: "107e7289",
+    };
+    run.pipelines["qa-wave1"] = {
+      ...qaPipeline([report("grader", ["C8", "C9"].map((code) => entry(`${cardA}.${code}`)))]),
+      id: "qa-wave1",
+      mergedCommit: "3beecda5",
+      createdAt: "2026-11-14T10:10:50.733Z",
+      integratedAt: "2026-11-14T10:22:18.366Z",
+    };
+    run.pipelines["qa-wave2-full"] = wave2Full;
+    run.pipelines["qa-1"] = wave2Extras;
+    run.finalReview = { ...run.finalReview!, qaPipelineId: "qa-1", commit: verified };
+    expect(() => assertMergedScorecardCoversProductSpec(run)).not.toThrow();
+  });
+
+  it("does not let one task's Cn satisfy another task in the same wave", () => {
+    const spec = ["- [ ] C1: one", "- [ ] C2: two"].join("\n");
+    const run = runWith(qaPipeline([report("grader", [entry("card-a.C1"), entry("card-a.C2"), entry("card-b.C2")])]), spec);
+    run.agents["lead-1"] = { ...lead(spec), featureName: "card-a" };
+    run.agents["lead-b"] = { ...lead(spec), agentId: "lead-b", featureName: "card-b" };
+    run.pipelines["feat-b"] = { ...featurePipeline(), id: "feat-b", leadAgentId: "lead-b", integratedAt: "2026-11-11T04:40:00.000Z" };
+    expect(() => assertMergedScorecardCoversProductSpec(run)).toThrow(/missing from the merged QA scorecard: card-b\.C1/);
+  });
+
+  it("does not carry a pass from a different commit", () => {
+    const reports = [report("grader", [entry("payroll.C1")])];
+    const older = {
+      ...qaPipeline([report("grader", ["C1", "C2", "C3"].map((code) => entry(`payroll.${code}`)))]),
+      id: "qa-old",
+      mergedCommit: "old-commit",
+      createdAt: "2026-11-11T04:00:00.000Z",
+      integratedAt: "2026-11-11T04:30:00.000Z",
+    };
+    const current = { ...qaPipeline(reports), mergedCommit: "new-commit", createdAt: "2026-11-11T05:00:00.000Z", integratedAt: "2026-11-11T05:10:00.000Z" };
+    const run = runWith(current, codedSpec);
+    run.pipelines["qa-old"] = older;
+    expect(() => assertMergedScorecardCoversProductSpec(run)).toThrow(/payroll\.C2/);
+    expect(() => assertMergedScorecardCoversProductSpec(run)).toThrow(/payroll\.C3/);
+  });
+});
+
+
+describe("consumer merged scorecard matches final merge gate", () => {
+  function scenario() {
+    const codes = Array.from({ length: 10 }, (_, i) => `C${i + 1}`);
+    const spec = codes.map((code) => `- [ ] ${code}: requirement`).join("\n");
+    const last = { ...qaPipeline([report("grader", ["C1", "C2", "C3", "C5", "C7", "C9"].map((c) => entry(`payroll.${c}`)))]),
+      id: "qa-1", integratedAt: "2026-11-11T07:00:00.000Z" };
+    const run = runWith(last, spec);
+    run.pipelines.old = { ...qaPipeline([report("grader", codes.map((c) => entry(`payroll.${c}`)))]),
+      id: "old", mergedCommit: "old", integratedAt: "2026-11-11T05:00:00.000Z" };
+    run.pipelines.partial = { ...qaPipeline([report("grader", ["C4", "C6", "C8", "C9", "C10"].map((c) => entry(`payroll.${c}`)))]),
+      id: "partial", integratedAt: "2026-11-11T06:00:00.000Z" };
+    return run;
+  }
+  it("combines partial same-commit pipelines and preserves each source", () => {
+    const run = scenario();
+    const result = mergedScorecardForRun(run)!;
+    expect(result.complete).toBe(true);
+    expect(result.criteria).toHaveLength(10);
+    for (const row of result.criteria) {
+      expect(row.commit).toBe(run.finalReview!.commit);
+      expect(row.status).toBe("pass");
+      expect(row.qaPipelineId).toBe(["C4", "C6", "C8", "C10"].some((c) => row.criterionId === `payroll.${c}`) ? "partial" : "qa-1");
+    }
+    expect(() => assertMergedScorecardCoversProductSpec(run)).not.toThrow();
+  });
+  it("does not count old-commit passes", () => {
+    const run = scenario();
+    run.pipelines.partial!.mergedCommit = "old";
+    const result = mergedScorecardForRun(run)!;
+    expect(result.complete).toBe(false);
+    expect(result.criteria.find((r) => r.criterionId === "payroll.C4")).toMatchObject({ status: "ungraded", qaPipelineId: null, commit: "def" });
+    expect(() => assertMergedScorecardCoversProductSpec(run)).toThrow(/payroll.C4/);
+  });
+  it("lets a later failure replace an earlier pass on the same commit", () => {
+    const run = scenario();
+    run.pipelines["qa-1"]!.stages[0]!.reports.push(report("grader", [entry("payroll.C9", "fail")]));
+    const result = mergedScorecardForRun(run)!;
+    expect(result.complete).toBe(false);
+    expect(result.criteria.find((r) => r.criterionId === "payroll.C9")).toMatchObject({ status: "fail", qaPipelineId: "qa-1", reason: "payroll.C9 is fail" });
+    expect(() => assertMergedScorecardCoversProductSpec(run)).toThrow(/payroll.C9 \(fail\)/);
   });
 });

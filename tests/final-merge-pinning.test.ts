@@ -137,6 +137,7 @@ describe("final merge commit pinning", () => {
       expect(auditKinds(flow, runId, "run.final_review_pinned")[0]?.summary).toContain(verifiedCommit);
       const runRead = await flow.callAsRole(runId, "supervisor", null, "slp_get_run", {});
       expect(JSON.parse(runRead.text).finalReview.commit).toBe(verifiedCommit);
+      expect(JSON.parse(runRead.text).mergedScorecard).toMatchObject({ commit: verifiedCommit, qaPipelineId: run.finalReview!.qaPipelineId, complete: true });
     });
 
     it("refuses the report when the QA branch moved after QA closed, and accepts it after a new QA pass", async () => {

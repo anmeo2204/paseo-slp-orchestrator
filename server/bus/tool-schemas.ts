@@ -135,7 +135,7 @@ export const BUS_TOOL_DEFINITIONS = {
   },
   slp_present_to_manager: {
     roles: ["supervisor"],
-    description: "Declare the result verified and present it to the Supreme Manager for final approval. Merges exactly the commit pinned by slp_report and refuses if the QA branch moved since. Also refuses when the product Spec lists coded criteria (C1…) that the merged QA scorecard does not cover with a pass; re-grade reports keep earlier passes by criterionId. When auto-merge is blocked by a dirty base checkout, the reply names the dirty files; after the base is clean, call this tool again (the pinned finalReview remains) or Approve in SLP Orchestrator.",
+    description: "Declare the result verified and present it to the Supreme Manager for final approval. Merges exactly the commit pinned by slp_report and refuses if the QA branch moved since. Also refuses when a feature in this QA pass has coded criteria (C1…) that the merged QA scorecard does not cover with a pass under <task name>.Cn; a re-grade keeps earlier passes of that key on the same commit, and features already merged in a previous wave are not required again. When auto-merge is blocked by a dirty base checkout, the reply names the dirty files; after the base is clean, call this tool again (the pinned finalReview remains) or Approve in SLP Orchestrator.",
     input: z.object({ report: z.string().trim().min(1) }),
   },
   // Only the QA Lead reports, so the Supervisor never receives a merged result that nobody verified.
@@ -169,7 +169,7 @@ export const BUS_TOOL_DEFINITIONS = {
   // This read-only summary remains useful to all agents without exposing database paths or tokens.
   slp_get_run: {
     roles: SLP_ROLES,
-    description: "Read the run's acceptance criteria, status and pipeline summaries.",
+    description: "Read run state including mergedScorecard: the final merge gate verdict for the verified commit, with per-criterion status, reason and source qaPipelineId. Use this for criterion ticks rather than the last QA pipeline. Read-only; does not end the turn.",
     input: z.object({}),
   },
   // Enables a Lead to immediately pause its child peers while updating the Brief or resolving a Spec change.

@@ -27,8 +27,18 @@ describe("features a QA pass verifies", () => {
     expect(names(featurePipelinesForQa(run, qa2))).toEqual(["f2"]);
   });
 
-  it("falls back to every feature when nothing merged since the last QA pass (Supervisor rework)", () => {
+  it("falls back to the previous pass when nothing merged since it closed (Supervisor rework)", () => {
     const run = runWith(pipeline("f1", "feature", "T01", "T02"), pipeline("qa1", "qa", "T03", "T04"), pipeline("qa2", "qa", "T05", null));
     expect(names(featurePipelinesForQa(run, run.pipelines.qa2))).toEqual(["f1"]);
+  });
+
+  it("keeps a later wave's rework on that wave, not on features an earlier pass already verified", () => {
+    const qa1 = pipeline("qa1", "qa", "T04", "T05");
+    const qa2 = pipeline("qa2", "qa", "T08", "T09");
+    const qa3 = pipeline("qa3", "qa", "T10", null);
+    const run = runWith(pipeline("f1", "feature", "T01", "T03"), qa1, pipeline("f2", "feature", "T06", "T07"), qa2, qa3);
+    expect(names(featurePipelinesForQa(run, qa2))).toEqual(["f2"]);
+    expect(names(featurePipelinesForQa(run, qa3))).toEqual(["f2"]);
+    expect(names(featurePipelinesForQa(run))).toEqual(["f2"]);
   });
 });

@@ -351,8 +351,10 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).toContain("it does not show who approved");
     expect(skillMarkdown).toMatch(/7\. \*\*Final-merge commit pinning and scorecard completeness:\*\*/);
     expect(skillMarkdown).toContain("Coded product-spec criteria gate");
+    expect(skillMarkdown).toContain("<task name>.Cn");
     expect(skillMarkdown).toContain("Nothing may be committed to the QA branch between the two");
     const { supervisor, qaLead } = defaultProjectPrompts();
+    expect(supervisor.workflow).toContain("<task name>.Cn");
     expect(supervisor.workflow).toContain("Final review is pinned to one commit");
     expect(supervisor.workflow).toContain("merges exactly the pinned commit");
     expect(supervisor.workflow).toContain("coded product-spec criteria (C1…)");
@@ -505,4 +507,10 @@ it("keeps seeded Supervisor, briefing and generated skill aligned with Kanbanly 
   expect(supervisorBriefing()).toContain("ordinary discussion does not create cards");
   expect(supervisorBriefing()).toContain("source of truth");
   expect(renderSlpManagerSkillMarkdown()).toContain("slp.spec.submit");
+});
+
+
+it("documents the canonical consumer scorecard projection", () => {
+  expect(renderSlpManagerSkillMarkdown()).toContain("Consumers must use mergedScorecard from slp_get_run");
+  expect(BUS_TOOL_DEFINITIONS.slp_get_run.description).toContain("mergedScorecard");
 });

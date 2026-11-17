@@ -1,3 +1,4 @@
+import { mergedScorecardForRun } from "./scorecard-completeness";
 // Read projections expose pipeline knowledge while authentication tokens remain private to the daemon.
 import type { BusCaller } from "../bus/http-mcp";
 import { isPipelineLeadRole } from "../../shared/roles";
@@ -35,6 +36,7 @@ export function readRun(ctx: PipelineContext, caller: BusCaller): string {
     finalReport: run.finalReport,
     // The commit final approval will merge; the Supervisor reviews this, not the moving branch tip.
     finalReview: run.finalReview,
+    mergedScorecard: mergedScorecardForRun(run),
     supervisorReport: run.supervisorReport,
     leads,
     pipelines: Object.values(run.pipelines).map(({ id, name, kind, status, worktree, leadAgentId, currentStageIndex }) => ({

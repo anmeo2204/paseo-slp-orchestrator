@@ -15,17 +15,42 @@ export function qaPipelinesOf(run: Run): PipelineState[] {
   return Object.values(run.pipelines).filter(isQaPipeline);
 }
 
-// A QA pass verifies what merged since the previous QA pass closed, so a multi-wave run does not re-grade features
-// an earlier pass already verified. With nothing new (Supervisor rework), it covers every feature.
-export function featurePipelinesForQa(run: Run, qaPipeline?: PipelineState): PipelineState[] {
-  const definedAt = qaPipeline?.createdAt ?? "\uffff";
-  const previousQaClosedAt = qaPipelinesOf(run)
-    .filter((pipeline) => pipeline.id !== qaPipeline?.id && pipeline.status === "integrated" && (pipeline.integratedAt ?? "") <= definedAt)
-    .map((pipeline) => pipeline.integratedAt ?? "")
-    .reduce((latestTimestamp, candidateTimestamp) => (candidateTimestamp > latestTimestamp ? candidateTimestamp : latestTimestamp), "");
-  const featurePipelines = featurePipelinesOf(run);
-  const mergedSincePreviousQa = featurePipelines.filter((pipeline) => (pipeline.integratedAt ?? "") > previousQaClosedAt);
-  return mergedSincePreviousQa.length > 0 ? mergedSincePreviousQa : featurePipelines;
+function latestIntegratedQa(run: Run, excludeId: string | undefined, integratedAtCeiling: string): PipelineState | null {
+  let latest: PipelineState | null = null;
+  for (const pipeline of qaPipelinesOf(run)) {
+    if (pipeline.id === excludeId || pipeline.status !== "integrated") continue;
+    const integratedAt = pipeline.integratedAt ?? "";
+    if (integratedAt > integratedAtCeiling) continue;
+    if (!latest || integratedAt > (latest.integratedAt ?? "")) latest = pipeline;
+  }
+  return latest;
+}
+
+function featuresMergedAfter(run: Run, integratedAt: string): PipelineState[] {
+  return featurePipelinesOf(run).filter((pipeline) => (pipeline.integratedAt ?? "") > integratedAt);
+}
+
+// A QA pass verifies what merged since the previous QA pass closed. A rework, where nothing new has merged,
+// verifies that same set again — not features an earlier wave already merged.
+export function featurePipelinesForQa(run: Run, qaPipeline?: PipelineState, seen: Set<string> = new Set()): PipelineState[] {
+  if (!qaPipeline) {
+    const latest = latestIntegratedQa(run, undefined, "\uffff");
+    if (!latest) {
+      const merged = featuresMergedAfter(run, "");
+      return merged.length > 0 ? merged : featurePipelinesOf(run);
+    }
+    const mergedSince = featuresMergedAfter(run, latest.integratedAt ?? "");
+    return mergedSince.length > 0 ? mergedSince : featurePipelinesForQa(run, latest, seen);
+  }
+  if (seen.has(qaPipeline.id)) return featuresMergedAfter(run, "");
+  seen.add(qaPipeline.id);
+  const previous = latestIntegratedQa(run, qaPipeline.id, qaPipeline.createdAt ?? "\uffff");
+  if (!previous) {
+    const merged = featuresMergedAfter(run, "");
+    return merged.length > 0 ? merged : featurePipelinesOf(run);
+  }
+  const mergedSince = featuresMergedAfter(run, previous.integratedAt ?? "");
+  return mergedSince.length > 0 ? mergedSince : featurePipelinesForQa(run, previous, seen);
 }
 
 // Runs created before QA Leads existed keep the old "primary Lead reports" flow.
