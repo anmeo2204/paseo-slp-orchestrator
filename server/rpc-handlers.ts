@@ -28,6 +28,7 @@ import {
 } from "../shared/rpc";
 import type { Run } from "../shared/state";
 import type { PipelineContext } from "./pipeline/context";
+import { mergedScorecardForRun } from "./pipeline/scorecard-completeness";
 import { buildPeerQuestionViews, computePeerQuestionMetrics } from "./pipeline/peer-messaging/question-metrics";
 import { originLogFields, rpcOrigin } from "./pipeline/action-origin";
 import { abortRun, approveMain, approveRunGate, startRun } from "./pipeline/run-lifecycle";
@@ -120,7 +121,9 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
   server.handle(getRunRpc, ({ runId }, { paseo }) => {
     // Capture the SDK handle on active-run polls so bus tools work immediately after a plugin reload.
     ctx.holder.capture(paseo);
-    return { run: ctx.store.find(runId) ?? null };
+    const run = ctx.store.find(runId) ?? null;
+    // Sibling field matches bus slp_get_run: Kanbanly polls slp.run.get and must not re-derive the gate.
+    return { run, mergedScorecard: run ? mergedScorecardForRun(run) : null };
   });
 
   server.handle(startRunRpc, async (input, { paseo }) => {

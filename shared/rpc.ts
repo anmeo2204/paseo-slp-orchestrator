@@ -88,11 +88,33 @@ export const listRunsRpc = defineRpc({
   output: z.object({ runs: z.array(RunSummarySchema) }),
 });
 
+/** Same derived verdict as bus `slp_get_run.mergedScorecard` (final-merge gate). Not persisted on Run. */
+const MergedScorecardRpcSchema = z
+  .object({
+    commit: z.string().nullable(),
+    qaPipelineId: z.string(),
+    complete: z.boolean(),
+    missing: z.array(z.string()),
+    notPass: z.array(z.string()),
+    criteria: z.array(
+      z.object({
+        criterionId: z.string(),
+        status: z.enum(["pass", "fail", "blocked", "ungraded"]),
+        reason: z.string(),
+        evidence: z.string().optional(),
+        commit: z.string().nullable(),
+        qaPipelineId: z.string().nullable(),
+      }),
+    ),
+  })
+  .nullable();
+
 export const getRunRpc = defineRpc({
   name: "slp.run.get",
   input: z.object({ runId: z.string() }),
   // Nullable instead of an error: a run may legitimately vanish (state reset) while the UI still polls its id.
-  output: z.object({ run: RunSchema.nullable() }),
+  // mergedScorecard is computed on read (same as slp_get_run) so card consumers share the merge-gate verdict.
+  output: z.object({ run: RunSchema.nullable(), mergedScorecard: MergedScorecardRpcSchema.optional() }),
 });
 
 export const startRunRpc = defineRpc({
