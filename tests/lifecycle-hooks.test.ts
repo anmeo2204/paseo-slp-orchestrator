@@ -259,6 +259,38 @@ describe("dynamic stage nudging", () => {
     expect(fixture.logs.some((entry) => entry.kind === "nudge.exhausted")).toBe(true);
   });
 
+  it("pauses the run when a turn fails because tokens or credits are exhausted", async () => {
+    const fixture = dynamicHookContext();
+    const hooks = fakeServer();
+    registerLifecycleHooks(hooks.server, fixture.ctx as never);
+    fixture.store.mutate(fixture.runId, (run) => Object.assign(run.agents[fixture.peerId], {
+      awaitingTool: "slp_stage_report",
+      awaitingSince: "2020-01-01T00:00:00.000Z",
+      nudges: 0,
+    }));
+    await hooks.fire("agent.turn_started", { agent: { id: fixture.peerId } });
+    await hooks.fire("agent.turn_ended", {
+      agent: { id: fixture.peerId },
+      outcome: { kind: "failed", error: { message: "Your credit balance is too low to access the API" } },
+      timeline: [],
+    });
+    expect(fixture.store.require(fixture.runId).billingHold?.reason).toContain("credit balance is too low");
+    expect(fixture.queuedMessages).toEqual([]);
+    expect(fixture.store.require(fixture.runId).agents[fixture.peerId].nudges).toBe(0);
+  });
+
+  it("does not pause the run for an ordinary failed turn", async () => {
+    const fixture = dynamicHookContext();
+    const hooks = fakeServer();
+    registerLifecycleHooks(hooks.server, fixture.ctx as never);
+    await hooks.fire("agent.turn_ended", {
+      agent: { id: fixture.peerId },
+      outcome: { kind: "failed", error: { message: "The model returned an empty response" } },
+      timeline: [{ type: "error", message: "request timed out" }],
+    });
+    expect(fixture.store.require(fixture.runId).billingHold).toBeNull();
+  });
+
   it("ignores stale, missing-start and non-completed turns", async () => {
     const fixture = dynamicHookContext();
     const hooks = fakeServer();

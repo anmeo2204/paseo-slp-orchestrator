@@ -193,6 +193,13 @@ export const approvePipelineGateRpc = defineRpc({
 });
 
 // Resumes a paused task (circuit breaker or repeated scope violations) with optional guidance.
+// Clears a provider-quota pause. The run keeps its pipelines and continues on the next sweep.
+export const resumeBillingHoldRpc = defineRpc({
+  name: "slp.run.resume_billing",
+  input: z.object({ runId: z.string() }),
+  output: z.object({ ok: z.boolean(), message: z.string() }),
+});
+
 export const resumeTaskRpc = defineRpc({
   name: "slp.task.resume",
   input: z.object({ runId: z.string(), taskId: z.string(), guidance: z.string().optional() }),

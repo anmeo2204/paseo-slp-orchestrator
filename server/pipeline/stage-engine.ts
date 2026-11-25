@@ -14,6 +14,7 @@ import {
   pipelineFinalizationBriefing,
   stagePromptContext,
 } from "./stage-briefings";
+import { holdRunForProviderQuota } from "./provider-quota";
 import { pausePipeline, requirePipeline } from "./stage-context";
 import { fallbackLeadIdFor, isQaPipeline } from "./qa/qa-phase-state";
 import { stageMail } from "./stage-mail";
@@ -166,6 +167,12 @@ async function advancePipeline(ctx: PipelineContext, runId: string, pipelineId: 
       await startStage(ctx, runId, pipelineId);
     }
   } catch (stageError) {
+    // A quota failure pauses the whole run. Pausing only this pipeline would still let the sweeper revive it.
+    if (holdRunForProviderQuota(ctx.store, runId, null, stageError, (heldRunId, reason) => {
+      ctx.logEvent(heldRunId, {
+        taskId: null, from: "pipeline", to: "pipeline", kind: "run.billing_hold", summary: reason, outcome: "blocked",
+      });
+    })) return;
     // Keep partially created identities and completion decisions so a resume retries the exact unfinished boundary.
     const reason = stageError instanceof Error ? stageError.message : String(stageError);
     const currentRun = ctx.store.require(runId);

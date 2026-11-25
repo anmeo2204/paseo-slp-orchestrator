@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { isPipelineLeadRole } from "../../shared/roles";
 import type { MailboxMessage, Run } from "../../shared/state";
 import { isConfirmedMissingAgentError, type AgentGateway, type AgentLiveStatus } from "./agent-gateway";
+import { holdRunForProviderQuota } from "../pipeline/provider-quota";
 import type { RunStore } from "../store/run-store";
 import { composeMailPrompt, type MailClass } from "./mail-composer";
 
@@ -115,6 +116,7 @@ export class Mailbox {
       for (const [recipientId, recipientMessages] of queuedByRecipient) {
         // Re-read before every recipient: a previous delivery can race an abort or stage closure.
         const recipientRun = this.store.require(runId);
+        if (recipientRun.billingHold) break;
         if (recipientRun.engineVersion !== "dynamic-stages-v1" || ["completed", "aborted"].includes(recipientRun.status)) break;
         const recipientStatus = liveStatuses.get(recipientId);
         if (!stageCanReceiveMail(recipientRun, recipientId)) continue;
@@ -208,6 +210,14 @@ export class Mailbox {
       });
       return true;
     } catch (sendError) {
+      if (holdRunForProviderQuota(this.store, runId, recipientId, sendError, (heldRunId, reason) => {
+        this.logMail(heldRunId, {
+          taskId: messages[0].taskId, from: "mailbox", to: "pipeline", kind: "run.billing_hold", summary: reason, outcome: "blocked",
+        });
+      })) {
+        // Leave the mail queued. The next flush after the human resumes delivers this same step once.
+        return false;
+      }
       if (isConfirmedMissingAgentError(sendError, recipientId)) {
         // When Paseo confirms the recipient session no longer exists, mark it archived so the sweeper respawns a replacement.
         this.store.mutate(runId, (run) => {

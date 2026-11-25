@@ -161,6 +161,15 @@ export const FinalReviewSchema = z.object({
 });
 export type FinalReview = z.infer<typeof FinalReviewSchema>;
 
+// Set when a provider refuses work because tokens or credits are exhausted. The sweeper does not nudge or
+// revive while this is set. The human clears it from the panel after topping up; the run then continues.
+export const BillingHoldSchema = z.object({
+  reason: z.string(),
+  detectedAt: z.string(),
+  agentId: z.string().nullable().default(null),
+});
+export type BillingHold = z.infer<typeof BillingHoldSchema>;
+
 export const RunSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -204,6 +213,8 @@ export const RunSchema = z.object({
   questions: z.array(QuestionSchema).default([]),
   // Run-level gate, used only for final_approval; task gates live on the task.
   gate: GateSchema.nullable().default(null),
+  // Null on runs stored before quota detection, and whenever the provider is still accepting turns.
+  billingHold: BillingHoldSchema.nullable().default(null),
   finalReport: z.string().nullable().default(null),
   // Null before the first report, when the run merges nothing (integration branch is the base branch), and on
   // runs stored before pinning existed.

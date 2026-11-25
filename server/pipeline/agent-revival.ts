@@ -10,6 +10,7 @@ import type { PipelineContext } from "./context";
 import { requirePipeline } from "./stage-context";
 import { recoverPipelines } from "./stage-engine";
 import { stageMail } from "./stage-mail";
+import { holdRunForProviderQuota } from "./provider-quota";
 import { ToolError } from "./tool-error";
 
 export interface ReviveAgentInput {
@@ -32,6 +33,7 @@ export async function reviveMasterLead(
   revivingMasterLeadRuns.add(runId);
   try {
     const initialRun = ctx.store.require(runId);
+    if (initialRun.billingHold) return null;
     if (
       initialRun.engineVersion !== "dynamic-stages-v1"
       || !["delegating", "planning", "running", "reporting"].includes(initialRun.status)
@@ -51,7 +53,9 @@ export async function reviveMasterLead(
     const targetWorktreePath = previousMasterLeadRecord?.worktreePath ?? undefined;
     // After the QA handover the accountable Lead is the QA Lead, and its replacement must keep that read-only role.
     const replacementRole = previousMasterLeadRecord?.role === "qa_lead" ? "qa_lead" : "master_lead";
-    const replacementMasterLead = await ctx.gateway.createAgent({
+    let replacementMasterLead;
+    try {
+      replacementMasterLead = await ctx.gateway.createAgent({
       runId,
       role: replacementRole,
       taskId: null,
@@ -66,6 +70,14 @@ export async function reviveMasterLead(
       title: `[${ROLE_LABELS[replacementRole]}] [${previousMasterLeadRecord?.featureName ?? initialRun.title}]`,
       awaitTool: null,
     });
+    } catch (createError) {
+      if (holdRunForProviderQuota(ctx.store, runId, previousMasterLeadId, createError, (heldRunId, reason) => {
+        ctx.logEvent(heldRunId, {
+          taskId: null, from: previousMasterLeadId, to: "pipeline", kind: "run.billing_hold", summary: reason, outcome: "blocked",
+        });
+      })) return null;
+      throw createError;
+    }
     const postCreateRun = ctx.store.require(runId);
     // Close the newly created session immediately if the run finished while the SDK request was in flight.
     if (["completed", "aborted"].includes(postCreateRun.status)) {
@@ -159,6 +171,7 @@ export async function recoverMasterLead(
   liveStatuses: Map<string, AgentLiveStatus>,
 ): Promise<boolean> {
   const currentRun = ctx.store.require(runId);
+  if (currentRun.billingHold) return false;
   if (
     currentRun.engineVersion !== "dynamic-stages-v1"
     || !["delegating", "planning", "running", "reporting"].includes(currentRun.status)
@@ -290,6 +303,9 @@ export async function reviveAgentsOnDemand(
   input: ReviveAgentInput,
 ): Promise<string> {
   const initialRun = ctx.store.require(caller.runId);
+  if (initialRun.billingHold) {
+    throw new ToolError("This run is paused because the provider is out of tokens or credits. Resume it in SLP Orchestrator after topping up.");
+  }
   const liveStatuses = await ctx.gateway.liveStatuses(caller.runId);
   const revivalSummaries: string[] = [];
   const manualReason = input.reason ?? `manual revival requested by ${caller.role}`;

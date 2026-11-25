@@ -17,13 +17,13 @@ interface RunControlsProps {
 
 export function RunControls({ styles, theme, run, readOnly = false, onRestored }: RunControlsProps) {
   // Each action keeps its own pending/error state, so retrying a blocked merge never disables or mislabels the stop button.
-  const { approveGate, approveMain, abortRun, restoreRun } = useRunActions();
+  const { approveGate, approveMain, abortRun, restoreRun, resumeBillingHold } = useRunActions();
   // Stopping a running SLP session opens a warning dialog so an accidental tap cannot wipe active worktrees.
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
 
   // Only the first error is shown: the buttons are mutually exclusive in practice and several stacked messages would be noise.
   const controlErrorMessage = describeRpcError(
-    approveGate.error ?? approveMain.error ?? abortRun.error ?? restoreRun.error,
+    approveGate.error ?? approveMain.error ?? abortRun.error ?? restoreRun.error ?? resumeBillingHold.error,
   );
   // Runs merge into baseBranch automatically on Supervisor acceptance; this fallback appears when the auto-merge was blocked.
   const canApproveMain = run.status === "awaiting_user";
@@ -44,6 +44,23 @@ export function RunControls({ styles, theme, run, readOnly = false, onRestored }
 
   return (
     <View style={styles.stack}>
+      {run.billingHold ? (
+        <View style={[styles.stack, { padding: 8, borderRadius: 8, backgroundColor: theme.colors.surface2 }]}>
+          <Text style={styles.warningText}>
+            Hết token hoặc credit. Run đang dừng tại bước hiện tại. Nạp thêm rồi bấm chạy tiếp.
+          </Text>
+          <Text style={styles.mutedText} selectable>{run.billingHold.reason}</Text>
+          <ActionButton
+            styles={styles}
+            tone="primary"
+            label={resumeBillingHold.isPending ? "Đang chạy tiếp..." : "Chạy tiếp"}
+            accessibilityLabel="Resume the run after provider tokens or credits are available"
+            disabled={resumeBillingHold.isPending}
+            onPress={() => resumeBillingHold.mutate({ runId: run.id })}
+          />
+        </View>
+      ) : null}
+
       {run.gate ? (
         <View style={[styles.stack, { padding: 8, borderRadius: 8, backgroundColor: theme.colors.surface2 }]}>
           <Text style={styles.warningText}>

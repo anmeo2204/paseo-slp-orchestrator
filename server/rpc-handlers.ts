@@ -16,6 +16,7 @@ import {
   listPeerQuestionsRpc,
   listRunsRpc,
   restoreRunRpc,
+  resumeBillingHoldRpc,
   resumeTaskRpc,
   scaffoldProjectRpc,
   setRunModeRpc,
@@ -31,6 +32,7 @@ import type { PipelineContext } from "./pipeline/context";
 import { mergedScorecardForRun } from "./pipeline/scorecard-completeness";
 import { buildPeerQuestionViews, computePeerQuestionMetrics } from "./pipeline/peer-messaging/question-metrics";
 import { originLogFields, rpcOrigin } from "./pipeline/action-origin";
+import { resumeBillingHold } from "./pipeline/provider-quota";
 import { abortRun, approveMain, approveRunGate, startRun } from "./pipeline/run-lifecycle";
 import { archiveRunSafely, dismissArchiveWarning, restoreRun } from "./pipeline/run-restore";
 import { approveProductSpec, submitProductSpec } from "./pipeline/spec-approval";
@@ -195,6 +197,11 @@ export function registerRpcHandlers(server: PluginServerContext, ctx: PipelineCo
     // Gate approval may archive agents or open the next stage, so it needs the live Paseo holder.
     ctx.holder.capture(paseo);
     return { ok: true, message: await approvePipelineGate(ctx, runId, pipelineId) };
+  });
+
+  server.handle(resumeBillingHoldRpc, ({ runId }, { paseo }) => {
+    ctx.holder.capture(paseo);
+    return { ok: true, message: resumeBillingHold(ctx, runId) };
   });
 
   server.handle(resumeTaskRpc, () => {

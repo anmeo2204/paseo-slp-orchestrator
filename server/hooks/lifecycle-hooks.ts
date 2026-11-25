@@ -13,6 +13,7 @@ import { nudgeReminder } from "../prompts/messages";
 import type { AgentLiveStatus } from "../runtime/agent-gateway";
 import { defaultFeatureValuesForProvider } from "../runtime/agent-gateway-helpers";
 import { handlePermissionRequest } from "./permission-handler";
+import { holdRunForProviderQuota, isProviderQuotaError } from "../pipeline/provider-quota";
 import { stageMail } from "../pipeline/stage-mail";
 
 // last time a turn started per agent; used to tell "the agent answered" from a stale turn end
@@ -143,6 +144,7 @@ function nudgeIfToolMissing(
 
 export function sweepStageNudges(ctx: PipelineContext, runId: string, liveStatuses: Map<string, AgentLiveStatus>): void {
   const run = ctx.store.require(runId);
+  if (run.billingHold) return;
   // The directory poll is the recovery path for a dropped turn-ended event or a turn that crashed into 'error' state.
   for (const [agentId, liveStatus] of liveStatuses) {
     if (liveStatus.archived || (liveStatus.status !== "idle" && liveStatus.status !== "closed" && liveStatus.status !== "error")) continue;
@@ -180,6 +182,24 @@ export function registerLifecycleHooks(server: PluginServerContext, ctx: Pipelin
     }),
     server.on("agent.turn_ended", (event, hookContext) => {
       ctx.holder.capture(hookContext.paseo);
+      if (event.outcome.kind === "failed") {
+        const lookup = ctx.store.findAgent(event.agent.id);
+        const timelineErrors = (event.timeline ?? []).flatMap((item) =>
+          item.type === "error" || (item.type === "notification" && item.level === "error") ? [item.message] : [],
+        );
+        const quotaError = [event.outcome.error.message, ...timelineErrors].find((message) => isProviderQuotaError(message));
+        if (
+          lookup
+          && quotaError
+          && holdRunForProviderQuota(ctx.store, lookup.run.id, event.agent.id, quotaError, (runId, reason) => {
+            ctx.logEvent(runId, {
+              taskId: null, from: event.agent.id, to: "pipeline", kind: "run.billing_hold", summary: reason, outcome: "blocked",
+            });
+          })
+        ) {
+          return;
+        }
+      }
       nudgeIfToolMissing(ctx, event.agent.id, event.outcome.kind);
     }),
     // Answered inside the event for low latency; the sweeper repeats this for events that were never delivered.

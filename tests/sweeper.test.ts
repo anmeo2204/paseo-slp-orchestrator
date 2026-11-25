@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetComputerUseGuardState } from "../server/pipeline/computer-use-guard";
 import { resetPeerShellWatchdogState } from "../server/pipeline/shell-watchdog";
+import { resumeBillingHold } from "../server/pipeline/provider-quota";
 import { startSweeper } from "../server/sweeper";
 import { DEFAULT_SLP_SETTINGS } from "../shared/settings";
 import type { FakePaseoHolder } from "./helpers/fake-paseo";
@@ -59,6 +60,27 @@ describe("sweeper", () => {
 
     await tick();
     expect(flow.gateway.promptsTo(masterLeadId)).toEqual(["sweep me"]);
+  });
+
+  it("holds mail while the provider is out of credits and delivers it after resume", async () => {
+    const { flow, runId, masterLeadId } = await sweptRun();
+    flow.ctx.mailbox.enqueue(runId, masterLeadId, "continue the stage", { taskId: null, awaitTool: "slp_define_pipeline", from: "t", summary: "s" });
+    flow.store.mutate(runId, (run) => {
+      run.billingHold = {
+        reason: "You exceeded your current quota",
+        detectedAt: "2026-11-19T00:00:00.000Z",
+        agentId: masterLeadId,
+      };
+    });
+
+    await tick();
+    expect(flow.gateway.prompts).toEqual([]);
+    expect(flow.run(runId).status).toBe("delegating");
+
+    resumeBillingHold(flow.ctx, runId);
+    expect(flow.run(runId).billingHold).toBeNull();
+    await tick();
+    expect(flow.gateway.promptsTo(masterLeadId)).toEqual(["continue the stage"]);
   });
 
   it("answers pending permission requests that the lifecycle event missed", async () => {

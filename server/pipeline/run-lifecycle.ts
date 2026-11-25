@@ -142,6 +142,7 @@ export async function startRun(ctx: PipelineContext, input: StartRunInput) {
     mailbox: [],
     questions: [],
     gate: null,
+    billingHold: null,
     finalReport: null,
     finalReview: null,
     supervisorReport: null,

@@ -45,10 +45,12 @@ export function inferRestoredRunStatus(run: Run): RunStatus {
   if (existingPipelines.length === 0) {
     return "planning";
   }
-  if (run.supervisorReport !== null || savedActiveStatus === "awaiting_user") {
+  // A report from an earlier wave stays on the run. It must not send a later, still-open pipeline to final approval.
+  const hasUnfinishedPipeline = existingPipelines.some((pipeline) => !["integrated", "failed"].includes(pipeline.status));
+  if (!hasUnfinishedPipeline && (run.supervisorReport !== null || savedActiveStatus === "awaiting_user")) {
     return "awaiting_user";
   }
-  if (run.finalReport !== null || savedActiveStatus === "reporting") {
+  if (!hasUnfinishedPipeline && (run.finalReport !== null || savedActiveStatus === "reporting")) {
     return "reporting";
   }
   // Right after the QA handover (or a rework) the QA Lead still owes its QA pipeline, which only planning makes it owe.

@@ -355,6 +355,9 @@ describe("slp-manager project skill provisioning", () => {
     expect(skillMarkdown).toContain("Nothing may be committed to the QA branch between the two");
     const { supervisor, qaLead } = defaultProjectPrompts();
     expect(supervisor.workflow).toContain("<task name>.Cn");
+    expect(supervisor.workflow).toContain("presses Chạy tiếp");
+    expect(skillMarkdown).toContain("Provider quota:");
+    expect(skillMarkdown).toContain("**Restore:**");
     expect(supervisor.workflow).toContain("Final review is pinned to one commit");
     expect(supervisor.workflow).toContain("merges exactly the pinned commit");
     expect(supervisor.workflow).toContain("coded product-spec criteria (C1…)");

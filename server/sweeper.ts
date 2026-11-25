@@ -74,6 +74,8 @@ async function sweepRun(ctx: PipelineContext, run: Run): Promise<void> {
   // before nudging or handing queued prompts to a stage cohort.
   const activeRun = ctx.store.require(run.id);
   if (activeRun.engineVersion !== "dynamic-stages-v1" || ["completed", "aborted"].includes(activeRun.status)) return;
+  // Out of tokens or credits: leave the run where it is until the human resumes it. Reviving would fail the same way.
+  if (activeRun.billingHold) return;
   await sweepComputerUseGuard(ctx, activeRun, liveStatuses);
   const hasDynamicPipeline = Object.keys(activeRun.pipelines).length > 0;
   // Active stage participants, a planning/running Master Lead, and a reporting Supervisor can owe workflow tools.
