@@ -463,6 +463,21 @@ describe("slp-manager project skill provisioning", () => {
     // A generated .slp must teach the traceability the QA Lead relies on to spot uncovered scenarios.
     expect(skillMarkdown).toContain("names the product spec scenario or acceptance criterion it covers");
     expect(leadWorkflow).toContain("Use its ID or a short unambiguous reference in requirement");
+    // Pattern-following UI, API and CRUD specs are one rule, shared by chat drafts and Kanbanly cards.
+    for (const patternRule of [
+      "file path or route",
+      "loading, empty, error and responsive",
+      "1–3 criteria",
+      "enough behavior to build",
+      "action or viewport",
+      "The Lead and QA choose how to run the check",
+    ]) {
+      expect(supervisorWorkflow.split(patternRule).length - 1).toBe(1);
+      expect(skillMarkdown).toContain(patternRule);
+    }
+    expect(supervisorWorkflow).toContain("`- [ ] C1:`");
+    expect(skillMarkdown).toContain("section 4 item 3");
+    expect(skillMarkdown).toContain("Do not add a second spec section");
     // Nothing may pin a section count now that the list is open-ended.
     expect(skillMarkdown).not.toMatch(/5-section|five-section/);
     // The wire contract itself is unchanged, so the exact brief shape must survive the rewording.
